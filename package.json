@@ -1,0 +1,31 @@
+{
+  "name": "genai-brd-functions-1",
+  "version": "1.0.0",
+  "description": "Python Cloud Functions that connect to external Firebase emulators",
+  "main": "index.js",
+  "scripts": {
+    "dev": "source ./dev.sh && nodemon --inspect=9229 -m functions-framework --target=process_image --debug",
+    "dev:hello": "source ./dev.sh && nodemon --inspect=9229 -m functions-framework --target=hello_world --debug",
+    "dev:cleanup": "source ./dev.sh && nodemon --inspect=9229 -m functions-framework --target=cleanup_resources --debug",
+    "start": "source ./dev.sh && functions-framework --target=process_image",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/yourusername/genai-brd-functions-1.git"
+  },
+  "keywords": [
+    "firebase",
+    "functions",
+    "cloud-functions",
+    "python"
+  ],
+  "author": "",
+  "license": "MIT"
+}
