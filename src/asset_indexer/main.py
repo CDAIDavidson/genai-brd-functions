@@ -23,11 +23,17 @@ from google.cloud import firestore, pubsub_v1, storage
 # ── Config from env (defaults only for local smoke-tests) ──────────────────
 PROJECT_ID          = os.getenv("GOOGLE_CLOUD_PROJECT", "genai-brd-qi")
 
-# Set emulator environment variables if not already set
-if os.getenv("FIRESTORE_EMULATOR_HOST") is None:
-    os.environ["FIRESTORE_EMULATOR_HOST"] = "127.0.0.1:8090"
-if os.getenv("FIREBASE_STORAGE_EMULATOR_HOST") is None:
-    os.environ["FIREBASE_STORAGE_EMULATOR_HOST"] = "127.0.0.1:9199"
+# Set emulator environment variables only if not running in GCP
+
+def running_in_gcp():
+    # GCP sets this environment variable in Cloud Functions/Run
+    return os.getenv("K_SERVICE") is not None
+
+if not running_in_gcp():
+    if os.getenv("FIRESTORE_EMULATOR_HOST") is None:
+        os.environ["FIRESTORE_EMULATOR_HOST"] = "127.0.0.1:8090"
+    if os.getenv("FIREBASE_STORAGE_EMULATOR_HOST") is None:
+        os.environ["FIREBASE_STORAGE_EMULATOR_HOST"] = "127.0.0.1:9199"
 
 SOURCE_BUCKET       = os.getenv("DROP_FILE_BUCKET", "genai-brd-qi").strip()
 # For local development, use the same bucket
@@ -36,15 +42,24 @@ DEST_BUCKET         = os.getenv("PROCESSED_BUCKET", SOURCE_BUCKET).strip()
 COLLECTION_NAME     = os.getenv("METADATA_COLLECTION", "metadata")
 PUBSUB_TOPIC_NAME   = os.getenv("DOC_INDEX_TOPIC", "document-indexer")
 
+FIRESTORE_DATABASE_ID = os.getenv("FIRSTORE_DATABASE_ID", "brd-genai-metadata")
+
 # ── Clients (reuse across invocations) ─────────────────────────────────────
 storage_client = storage.Client()
 pubsub_client  = pubsub_v1.PublisherClient()
 topic_path     = pubsub_client.topic_path(PROJECT_ID, PUBSUB_TOPIC_NAME)
-firestore_client = firestore.Client(project=PROJECT_ID)
+firestore_client = firestore.Client(project=PROJECT_ID, database=FIRESTORE_DATABASE_ID)
 # ───────────────────────────────────────────────────────────────────────────
 
+print(f"[DEBUG] GOOGLE_CLOUD_PROJECT={os.getenv('GOOGLE_CLOUD_PROJECT')}")
+print(f"[DEBUG] DROP_FILE_BUCKET={os.getenv('DROP_FILE_BUCKET')}")
+print(f"[DEBUG] PROCESSED_BUCKET={os.getenv('PROCESSED_BUCKET')}")
+print(f"[DEBUG] METADATA_COLLECTION={os.getenv('METADATA_COLLECTION')}")
+print(f"[DEBUG] DOC_INDEX_TOPIC={os.getenv('DOC_INDEX_TOPIC')}")
 print(f"[DEBUG] SOURCE_BUCKET={SOURCE_BUCKET}")
 print(f"[DEBUG] DEST_BUCKET={DEST_BUCKET}")
+print(f"[DEBUG] COLLECTION_NAME={COLLECTION_NAME}")
+print(f"[DEBUG] PUBSUB_TOPIC_NAME={PUBSUB_TOPIC_NAME}")
 
 def _log(brd_id: str, status: str, start_time: datetime | None, **extras):
     """Insert or update a Firestore doc that tracks this invocation."""
@@ -54,6 +69,7 @@ def _log(brd_id: str, status: str, start_time: datetime | None, **extras):
         "timestamp": datetime.utcnow().isoformat() + "Z",
         **extras,
     }
+    print(f"[DEBUG] Writing Firestore doc: brd_id={brd_id}, data={data}")
     firestore_client.collection(COLLECTION_NAME).document(brd_id).set(
         data, merge=True
     )
@@ -77,6 +93,7 @@ def asset_indexer(cloud_event):
 
     ext            = os.path.splitext(src_file_name)[1]
     brd_id         = secrets.token_hex(5)
+    print(f"[DEBUG] brd_id={brd_id}")
     dest_file_name = f"{brd_id}{ext}"
 
     src_bucket  = storage_client.bucket(src_bucket_name)
