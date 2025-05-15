@@ -122,8 +122,14 @@ def asset_indexer(cloud_event):
              duration=(datetime.utcnow() - start_time).total_seconds())
 
         # Notify downstream
-        msg = {"workflow_id": brd_id, "document_path": dest_file_name}
-        pubsub_client.publish(topic_path, data=json.dumps(msg).encode()).result()
+        msg = {"brd_workflow_id": brd_id, "document_id": brd_id}
+        print(f"[DEBUG] About to publish to Pub/Sub: topic_path={topic_path}, msg={msg}")
+        try:
+            pubsub_client.publish(topic_path, data=json.dumps(msg).encode()).result()
+            print(f"[DEBUG] Published to Pub/Sub: topic_path={topic_path}, msg={msg}")
+        except Exception as pubsub_exc:
+            print(f"[ERROR] Failed to publish to Pub/Sub: {str(pubsub_exc)}", file=sys.stderr)
+            raise  # Re-raise to be caught by outer try/except
 
         print(f"[{brd_id}] copied {src_file_name} ➜ {dest_file_name}")
 
