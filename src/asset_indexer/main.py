@@ -23,8 +23,15 @@ from google.cloud import firestore, pubsub_v1, storage
 # ── Config from env (defaults only for local smoke-tests) ──────────────────
 PROJECT_ID          = os.getenv("GOOGLE_CLOUD_PROJECT", "genai-brd-qi")
 
-SOURCE_BUCKET       = os.getenv("DROP_FILE_BUCKET", "brd-genai-sink")
-DEST_BUCKET         = os.getenv("PROCESSED_BUCKET", "brd-genai-doc-processor-input")
+# Set emulator environment variables if not already set
+if os.getenv("FIRESTORE_EMULATOR_HOST") is None:
+    os.environ["FIRESTORE_EMULATOR_HOST"] = "127.0.0.1:8090"
+if os.getenv("FIREBASE_STORAGE_EMULATOR_HOST") is None:
+    os.environ["FIREBASE_STORAGE_EMULATOR_HOST"] = "127.0.0.1:9199"
+
+SOURCE_BUCKET       = os.getenv("DROP_FILE_BUCKET", "genai-brd-qi").strip()
+# For local development, use the same bucket
+DEST_BUCKET         = os.getenv("PROCESSED_BUCKET", SOURCE_BUCKET).strip()
 
 COLLECTION_NAME     = os.getenv("METADATA_COLLECTION", "metadata")
 PUBSUB_TOPIC_NAME   = os.getenv("DOC_INDEX_TOPIC", "document-indexer")
@@ -36,6 +43,8 @@ topic_path     = pubsub_client.topic_path(PROJECT_ID, PUBSUB_TOPIC_NAME)
 firestore_client = firestore.Client(project=PROJECT_ID)
 # ───────────────────────────────────────────────────────────────────────────
 
+print(f"[DEBUG] SOURCE_BUCKET={SOURCE_BUCKET}")
+print(f"[DEBUG] DEST_BUCKET={DEST_BUCKET}")
 
 def _log(brd_id: str, status: str, start_time: datetime | None, **extras):
     """Insert or update a Firestore doc that tracks this invocation."""
@@ -49,6 +58,8 @@ def _log(brd_id: str, status: str, start_time: datetime | None, **extras):
         data, merge=True
     )
 
+def is_storage_emulator():
+    return os.getenv("FIREBASE_STORAGE_EMULATOR_HOST") is not None
 
 @functions_framework.cloud_event
 def asset_indexer(cloud_event):
@@ -59,7 +70,7 @@ def asset_indexer(cloud_event):
         src_bucket_name = SOURCE_BUCKET
         src_file_name   = "mock_confluence_brd_redacted.html"
     else:
-        sleep(5)                                # GCS metadata latency
+        sleep(1)                                # GCS metadata latency
         payload        = cloud_event.data
         src_bucket_name = payload["bucket"]
         src_file_name   = payload["name"]
@@ -77,9 +88,16 @@ def asset_indexer(cloud_event):
 
     try:
         src_blob  = src_bucket.blob(src_file_name)
-        dest_blob = src_bucket.copy_blob(src_blob, dest_bucket, dest_file_name)
+        # Use workaround only if running in the emulator
+        if is_storage_emulator():
+            content = src_blob.download_as_bytes()
+            dest_blob = dest_bucket.blob(dest_file_name)
+            dest_blob.upload_from_string(content)
+        else:
+            dest_blob = src_bucket.copy_blob(src_blob, dest_bucket, dest_file_name)
         dest_blob.metadata = {"source_file_name": src_file_name}
-        dest_blob.patch()
+        if not is_storage_emulator():
+            dest_blob.patch()
         src_blob.delete()
 
         # Success log

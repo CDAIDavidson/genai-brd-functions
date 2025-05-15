@@ -1,0 +1,12 @@
+{
+  "source": "//storage.googleapis.com/projects/_/buckets/DEVBUCKET",
+  "specversion": "1.0",
+  "type": "google.cloud.storage.object.v1.finalized",
+  "data": {
+    "name": "mock_confluence_brd_redacted.html",
+    "bucket": "DEVBUCKET"
+  },
+  "time": "2025-05-15T14:16:17.6546121+10:00",
+  "id": "test-8a293881-58f5-4633-aa82-48d61581ed18",
+  "datacontenttype": "application/json"
+}

@@ -1,28 +1,15 @@
 {
-  "name": "Cloud Code: Run asset_indexer (Storage event)",
-  "type": "cloudcode.cloudfunctions",
-  "request": "launch",
-
-  // Function source
-  "function": "asset_indexer",
-  "runtime": "python311",
-  "source": "${workspaceFolder}/src/asset_indexer",
-  "entryPoint": "asset_indexer",
-
-  // Where Functions Framework will listen
-  "port": 8081,
-  "debugPort": 9229,
-
-  // Tell Cloud Code to send a fake GCS-finalize event
-  "eventType": "google.cloud.storage.object.v1.finalized",
-  "eventFilters": {
-    "bucket": "brd-genai-sink"
-  },
-  "eventData": {
-    "bucket": "brd-genai-sink",
-    "name": "mock_confluence_brd_redacted.html"
-  },
-
-  // Merge the env-vars you already defined in settings.json
-  "env": "${workspaceFolder}/.vscode/settings.json:cloudcode.workspace.env"
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Python: Attach",
+      "type": "python",
+      "request": "attach",
+      "connect": {
+        "host": "localhost",
+        "port": 5678
+      },
+      "justMyCode": false
+    }
+  ]
 }

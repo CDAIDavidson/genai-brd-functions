@@ -1,18 +1,19 @@
 {
-  // Cloud Code injects these into every run/debug session
+   "cloudcode.enableGeminiCodeAssist": false,
+  "geminiCodeAssist.enabled": true,          // ← leave the stand-alone one on
+  "cloudcode.core.project": "genai-brd-qi",
+  /* Environment variables passed to the Cloud Run /
+     Cloud Functions emulator and to deployed services */
   "cloudcode.workspace.env": {
-    "FIRESTORE_EMULATOR_HOST": "127.0.0.1:8090",
-    "FIREBASE_AUTH_EMULATOR_HOST": "127.0.0.1:9099",
-    "FIREBASE_STORAGE_EMULATOR_HOST": "127.0.0.1:9199",
-    "STORAGE_EMULATOR_HOST": "http://127.0.0.1:9199",
-    "PUBSUB_EMULATOR_HOST": "127.0.0.1:8085",
-
     "GOOGLE_CLOUD_PROJECT": "genai-brd-qi",
+
     "DROP_FILE_BUCKET": "brd-genai-sink",
     "PROCESSED_BUCKET": "brd-genai-doc-processor-input",
-    "METADATA_COLLECTION": "metadata"
-  },
+    "METADATA_COLLECTION": "metadata",
+    "DOC_INDEX_TOPIC": "document-indexer",
 
-  "python.formatting.provider": "black",
-  "editor.formatOnSave": true
+    "FIRESTORE_EMULATOR_HOST": "127.0.0.1:8090",
+    "FIREBASE_STORAGE_EMULATOR_HOST": "127.0.0.1:9199",
+    "STORAGE_EMULATOR_HOST": "http://127.0.0.1:9199"
+  }
 }
