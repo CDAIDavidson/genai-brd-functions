@@ -24,7 +24,6 @@ from google.cloud import firestore, pubsub_v1, storage
 PROJECT_ID          = os.getenv("GOOGLE_CLOUD_PROJECT", "genai-brd-qi")
 
 # Set emulator environment variables only if not running in GCP
-
 def running_in_gcp():
     # GCP sets this environment variable in Cloud Functions/Run
     return os.getenv("K_SERVICE") is not None
@@ -42,13 +41,26 @@ DEST_BUCKET         = os.getenv("PROCESSED_BUCKET", SOURCE_BUCKET).strip()
 COLLECTION_NAME     = os.getenv("METADATA_COLLECTION", "metadata")
 PUBSUB_TOPIC_NAME   = os.getenv("DOC_INDEX_TOPIC", "document-indexer")
 
-FIRESTORE_DATABASE_ID = os.getenv("FIRSTORE_DATABASE_ID", "brd-genai-metadata")
+FIRESTORE_DATABASE_ID = os.getenv("FIRESTORE_DATABASE_ID", "default")
 
 # ── Clients (reuse across invocations) ─────────────────────────────────────
 storage_client = storage.Client()
 pubsub_client  = pubsub_v1.PublisherClient()
 topic_path     = pubsub_client.topic_path(PROJECT_ID, PUBSUB_TOPIC_NAME)
-firestore_client = firestore.Client(project=PROJECT_ID, database=FIRESTORE_DATABASE_ID)
+
+print(f"[DEBUG] Initializing Firestore client:")
+print(f"[DEBUG] - Project ID: {PROJECT_ID}")
+print(f"[DEBUG] - Database ID: {FIRESTORE_DATABASE_ID}")
+print(f"[DEBUG] - Collection: {COLLECTION_NAME}")
+print(f"[DEBUG] - Emulator mode: {not running_in_gcp()}")
+
+# Initialize Firestore with the correct database and emulator settings
+if not running_in_gcp():
+    print(f"[DEBUG] Using emulator at {os.environ['FIRESTORE_EMULATOR_HOST']}")
+    print(f"[DEBUG] View data at: http://127.0.0.1:4000/firestore/data/{FIRESTORE_DATABASE_ID}/{COLLECTION_NAME}")
+    firestore_client = firestore.Client(project=PROJECT_ID)
+else:
+    firestore_client = firestore.Client(project=PROJECT_ID)
 # ───────────────────────────────────────────────────────────────────────────
 
 print(f"[DEBUG] GOOGLE_CLOUD_PROJECT={os.getenv('GOOGLE_CLOUD_PROJECT')}")
@@ -67,12 +79,31 @@ def _log(brd_id: str, status: str, start_time: datetime | None, **extras):
         "workflow_id": brd_id,
         "status": status,
         "timestamp": datetime.utcnow().isoformat() + "Z",
+        "environment": "emulator" if not running_in_gcp() else "production",
         **extras,
     }
-    print(f"[DEBUG] Writing Firestore doc: brd_id={brd_id}, data={data}")
-    firestore_client.collection(COLLECTION_NAME).document(brd_id).set(
-        data, merge=True
-    )
+    try:
+        doc_ref = firestore_client.collection(COLLECTION_NAME).document(brd_id)
+        print(f"[DEBUG] Firestore write details:")
+        print(f"[DEBUG] - Database: {firestore_client._database}")
+        print(f"[DEBUG] - Project: {firestore_client.project}")
+        print(f"[DEBUG] - Collection: {COLLECTION_NAME}")
+        print(f"[DEBUG] - Document path: {doc_ref.path}")
+        print(f"[DEBUG] - Data: {data}")
+        doc_ref.set(data, merge=True)
+        print(f"[DEBUG] Successfully wrote to Firestore: {doc_ref.path}")
+        # Read back for confirmation
+        doc = doc_ref.get()
+        print(f"[DEBUG] Read back doc: {doc.to_dict()}")
+        db_id = firestore_client._database if firestore_client._database else 'default'
+        if db_id == 'default':
+            url = f"http://127.0.0.1:4000/firestore/default/data/{COLLECTION_NAME}/{brd_id}"
+        else:
+            url = f"http://127.0.0.1:4000/firestore/data/{db_id}/{COLLECTION_NAME}/{brd_id}"
+        print(f"[DEBUG] View this document in the Emulator UI: {url}")
+    except Exception as e:
+        print(f"[ERROR] Failed to write to Firestore: {str(e)}", file=sys.stderr)
+        raise
 
 def is_storage_emulator():
     return os.getenv("FIREBASE_STORAGE_EMULATOR_HOST") is not None

@@ -27,5 +27,8 @@
     "python"
   ],
   "author": "",
-  "license": "MIT"
+  "license": "MIT",
+  "dependencies": {
+    "firebase-admin": "^13.4.0"
+  }
 }
