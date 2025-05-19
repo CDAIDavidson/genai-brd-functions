@@ -23,16 +23,15 @@ import google.auth.transport.requests
 import google.oauth2.id_token
 
 # Local imports
-from .common.base import Document, FunctionStatus
-
-from .common.firestore_utils import firestore_upsert, firestore_update
-from .common import running_in_gcp, is_storage_emulator, get_environment_name, setup_emulator_environment
+from asset_indexer.common.base import DocumentClass, FunctionStatus, DocumentType
+# from asset_indexer.common.firestore_utils import firestore_upsert, firestore_update
+from asset_indexer.common import running_in_gcp, is_storage_emulator, get_environment_name, setup_emulator_environment
 
 # For local testing only
 try:
     # Try to import for direct local testing if possible
     if not running_in_gcp():
-        from ..content_processor.main import content_processor as local_content_processor
+        from content_processor.main import content_processor as local_content_processor
 except ImportError:
     local_content_processor = None
     print("[DEBUG] Could not import content_processor for direct local calling")
@@ -121,16 +120,22 @@ def asset_indexer(cloud_event):
     # Generate a document ID to use for both in-progress and completed states
     document_id = secrets.token_hex(8)
     
-    inprogress_document = Document.create_document(
+    function_document_data = DocumentClass(
+        item_type=DocumentType.FUNCTION_EXECUTION_DATA,
         brd_workflow_id=brd_id,
-        status=FunctionStatus.IN_PROGRESS,
+        timestamp_created=datetime.now().isoformat(),
+        timestamp_updated=datetime.now().isoformat(),
         description="asset_indexer",
         description_heading="asset_indexer description",
-        environment=environment
+        item={
+            "status": FunctionStatus.IN_PROGRESS,
+            "environment": environment
+        }
     )
-    firestore_update(firestore_client, COLLECTION_NAME, document_id=document_id, item=inprogress_document)
-    print(f"[DEBUG] Created in-progress document with ID: {document_id}")
 
+    function_document_ref = firestore_client.collection(COLLECTION_NAME).document(document_id)
+    function_document_ref.set(function_document_data.to_dict())
+    
     
     try:
         src_blob = src_bucket.blob(src_file_name)
@@ -146,39 +151,33 @@ def asset_indexer(cloud_event):
             dest_blob.patch()
         src_blob.delete()
 
-        # Success log
-        completed_document = Document.update_document(
-            inprogress_document, 
-            status=FunctionStatus.COMPLETED,
-        )
-        # Use the same document ID as the in-progress document
-        firestore_upsert(firestore_client, COLLECTION_NAME, completed_document, document_id=document_id)
+        # Update document status to completed
+        function_document_ref.update({
+            "item.status": FunctionStatus.COMPLETED,
+            "timestamp_updated": datetime.now().isoformat()
+        })
         print(f"[DEBUG] Updated document with ID: {document_id} to completed status")
 
         # Call content_processor using the appropriate method
-        print(f"[DEBUG] Calling content_processor with brd_workflow_id={brd_id}")
-        additional_data = {
-            "title": os.path.splitext(os.path.basename(src_file_name))[0],
-            "source_file": src_file_name
-        }
+        # print(f"[DEBUG] Calling content_processor with brd_workflow_id={brd_id}")
+        # additional_data = {
+        #     "title": os.path.splitext(os.path.basename(src_file_name))[0],
+        #     "source_file": src_file_name
+        # }
         
-        try:
-            result = call_content_processor(brd_id)
-            print(f"[DEBUG] Successfully called content_processor for brd_workflow_id={brd_id}. Result: {result}")
-        except Exception as func_exc:
-            print(f"[ERROR] Failed to call content_processor: {str(func_exc)}", file=sys.stderr)
-            raise  # Re-raise to be caught by outer try/except
+        # try:
+        #     result = call_content_processor(brd_id)
+        #     print(f"[DEBUG] Successfully called content_processor for brd_workflow_id={brd_id}. Result: {result}")
+        # except Exception as func_exc:
+        #     print(f"[ERROR] Failed to call content_processor: {str(func_exc)}", file=sys.stderr)
+        #     raise  # Re-raise to be caught by outer try/except
 
         print(f"[{brd_id}] copied {src_file_name} ➜ {dest_file_name}")
 
     except Exception as exc:
-        # Failure log
-        failed_document = Document.update_document(
-            inprogress_document,
-            status=FunctionStatus.FAILED,
-        )
-        # Use the same document ID as the in-progress document
-        firestore_upsert(firestore_client, COLLECTION_NAME, failed_document, document_id=document_id)
-        print(f"[DEBUG] Updated document with ID: {document_id} to failed status")
-        print(f"[{brd_id}] ERROR: {exc}", file=sys.stderr)
+        # Update document status to failed
+        function_document_ref.update({
+            "item.status": FunctionStatus.FAILED,
+            "timestamp_updated": datetime.now().isoformat()
+        })
         raise
