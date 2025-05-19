@@ -19,6 +19,10 @@ from dotenv import load_dotenv
 import functions_framework
 from google.cloud import firestore, pubsub_v1, storage
 
+# Local imports - changing to relative imports
+from .common.base import Document, FunctionStatus
+from .common.firestore_utils import firestore_upsert
+
 # Load dotenv for local development (ignored in prod)
 load_dotenv()
 
@@ -65,39 +69,6 @@ pubsub_client = pubsub_v1.PublisherClient()
 topic_path = pubsub_client.topic_path(PROJECT_ID, PUBSUB_TOPIC_NAME)
 firestore_client = firestore.Client(project=PROJECT_ID)
 
-# ── Helper functions ────────────────────────────────────────────────────────
-def _log(brd_id: str, status: str, start_time: datetime | None, **extras):
-    """Insert or update a Firestore doc that tracks this invocation."""
-    data = {
-        "workflow_id": brd_id,
-        "status": status,
-        "timestamp": datetime.utcnow().isoformat() + "Z",
-        "environment": "emulator" if not running_in_gcp() else "production",
-        **extras,
-    }
-    try:
-        doc_ref = firestore_client.collection(COLLECTION_NAME).document(brd_id)
-        print(f"[DEBUG] Firestore write details:")
-        print(f"[DEBUG] - Database: {firestore_client._database}")
-        print(f"[DEBUG] - Project: {firestore_client.project}")
-        print(f"[DEBUG] - Collection: {COLLECTION_NAME}")
-        print(f"[DEBUG] - Document path: {doc_ref.path}")
-        print(f"[DEBUG] - Data: {data}")
-        doc_ref.set(data, merge=True)
-        print(f"[DEBUG] Successfully wrote to Firestore: {doc_ref.path}")
-        # Read back for confirmation
-        doc = doc_ref.get()
-        print(f"[DEBUG] Read back doc: {doc.to_dict()}")
-        db_id = firestore_client._database if firestore_client._database else 'default'
-        if db_id == 'default':
-            url = f"http://127.0.0.1:4000/firestore/default/data/{COLLECTION_NAME}/{brd_id}"
-        else:
-            url = f"http://127.0.0.1:4000/firestore/data/{db_id}/{COLLECTION_NAME}/{brd_id}"
-        print(f"[DEBUG] View this document in the Emulator UI: {url}")
-    except Exception as e:
-        print(f"[ERROR] Failed to write to Firestore: {str(e)}", file=sys.stderr)
-        raise
-
 # ── Main Cloud Function ─────────────────────────────────────────────────────
 @functions_framework.cloud_event
 def asset_indexer(cloud_event):
@@ -122,8 +93,17 @@ def asset_indexer(cloud_event):
     dest_bucket = storage_client.bucket(DEST_BUCKET)
 
     # Initial log
-    _log(brd_id, "In Progress", start_time,
-         source=src_file_name, dest=dest_file_name)
+    document = Document.create_function_execution(
+        id=brd_id,
+        brd_workflow_id=brd_id,
+        status=FunctionStatus.IN_PROGRESS,
+        description="Processing BRD document",
+        description_heading="Asset Indexer Function",
+        source=src_file_name,
+        dest=dest_file_name,
+        environment="emulator" if not running_in_gcp() else "production"
+    )
+    firestore_upsert(firestore_client, COLLECTION_NAME, document)
 
     try:
         src_blob = src_bucket.blob(src_file_name)
@@ -140,8 +120,18 @@ def asset_indexer(cloud_event):
         src_blob.delete()
 
         # Success log
-        _log(brd_id, "Completed", start_time,
-             duration=(datetime.utcnow() - start_time).total_seconds())
+        completed_document = Document.create_function_execution(
+            id=brd_id,
+            brd_workflow_id=brd_id,
+            status=FunctionStatus.COMPLETED,
+            description="Successfully processed BRD document",
+            description_heading="Asset Indexer Function",
+            source=src_file_name,
+            dest=dest_file_name,
+            environment="emulator" if not running_in_gcp() else "production",
+            duration=(datetime.utcnow() - start_time).total_seconds()
+        )
+        firestore_upsert(firestore_client, COLLECTION_NAME, completed_document)
 
         # Notify downstream
         msg = {"brd_workflow_id": brd_id, "document_id": brd_id}
@@ -156,6 +146,18 @@ def asset_indexer(cloud_event):
         print(f"[{brd_id}] copied {src_file_name} ➜ {dest_file_name}")
 
     except Exception as exc:
-        _log(brd_id, "Failed", start_time)
+        # Failure log
+        failed_document = Document.create_function_execution(
+            id=brd_id,
+            brd_workflow_id=brd_id,
+            status=FunctionStatus.FAILED,
+            description=f"Failed to process BRD document: {str(exc)}",
+            description_heading="Asset Indexer Function",
+            source=src_file_name,
+            dest=dest_file_name,
+            environment="emulator" if not running_in_gcp() else "production",
+            error=str(exc)
+        )
+        firestore_upsert(firestore_client, COLLECTION_NAME, failed_document)
         print(f"[{brd_id}] ERROR: {exc}", file=sys.stderr)
         raise
