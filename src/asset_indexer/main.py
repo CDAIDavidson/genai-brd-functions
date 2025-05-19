@@ -23,7 +23,7 @@ import google.auth.transport.requests
 import google.oauth2.id_token
 
 # Local imports
-from asset_indexer.common.base import DocumentClass, FunctionStatus, DocumentType
+from asset_indexer.common.base import DocumentClass, FunctionStatus, DocumentType, FunctionData
 # from asset_indexer.common.firestore_utils import firestore_upsert, firestore_update
 from asset_indexer.common import running_in_gcp, is_storage_emulator, get_environment_name, setup_emulator_environment
 
@@ -120,6 +120,14 @@ def asset_indexer(cloud_event):
     # Generate a document ID to use for both in-progress and completed states
     document_id = secrets.token_hex(8)
     
+    function_item = FunctionData(
+        timestamp_created=datetime.now().isoformat(),
+        timestamp_updated=datetime.now().isoformat(),
+        description="asset_indexer",
+        description_heading="asset_indexer description",
+        status=FunctionStatus.IN_PROGRESS,
+        environment=environment
+    )
     function_document_data = DocumentClass(
         item_type=DocumentType.FUNCTION_EXECUTION_DATA,
         brd_workflow_id=brd_id,
@@ -127,10 +135,7 @@ def asset_indexer(cloud_event):
         timestamp_updated=datetime.now().isoformat(),
         description="asset_indexer",
         description_heading="asset_indexer description",
-        item={
-            "status": FunctionStatus.IN_PROGRESS,
-            "environment": environment
-        }
+        item=function_item
     )
 
     function_document_ref = firestore_client.collection(COLLECTION_NAME).document(document_id)
@@ -154,6 +159,7 @@ def asset_indexer(cloud_event):
         # Update document status to completed
         function_document_ref.update({
             "item.status": FunctionStatus.COMPLETED,
+            "item.timestamp_updated": datetime.now().isoformat(),
             "timestamp_updated": datetime.now().isoformat()
         })
         print(f"[DEBUG] Updated document with ID: {document_id} to completed status")
@@ -178,6 +184,7 @@ def asset_indexer(cloud_event):
         # Update document status to failed
         function_document_ref.update({
             "item.status": FunctionStatus.FAILED,
+            "item.timestamp_updated": datetime.now().isoformat(),
             "timestamp_updated": datetime.now().isoformat()
         })
         raise
