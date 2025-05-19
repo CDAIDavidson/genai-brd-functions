@@ -63,13 +63,6 @@ if not running_in_gcp():
 storage_client = storage.Client()
 pubsub_client = pubsub_v1.PublisherClient()
 topic_path = pubsub_client.topic_path(PROJECT_ID, PUBSUB_TOPIC_NAME)
-
-# Initialize Firestore with the correct database and emulator settings
-if not running_in_gcp():
-    print(f"[DEBUG] Using emulator at {os.environ['FIRESTORE_EMULATOR_HOST']}")
-    print(f"[DEBUG] View data at: http://127.0.0.1:4000/firestore/data/{FIRESTORE_DATABASE_ID}/{COLLECTION_NAME}")
-
-# Initialize Firestore client (same for both environments)
 firestore_client = firestore.Client(project=PROJECT_ID)
 
 # ── Helper functions ────────────────────────────────────────────────────────
