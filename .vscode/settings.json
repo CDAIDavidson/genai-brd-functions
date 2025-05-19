@@ -7,8 +7,8 @@
   "cloudcode.workspace.env": {
     "GOOGLE_CLOUD_PROJECT": "genai-brd-qi",
 
-    "DROP_FILE_BUCKET": "brd-genai-sink",
-    "PROCESSED_BUCKET": "brd-genai-doc-processor-input",
+    "DROP_BRD_BUCKET": "brd-genai-sink",
+    "BRD_PROCESSED_BUCKET": "brd-genai-doc-processor-input",
     "METADATA_COLLECTION": "metadata",
     "DOC_INDEX_TOPIC": "document-indexer",
 

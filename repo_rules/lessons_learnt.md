@@ -17,8 +17,8 @@ from dotenv import load_dotenv
 import yaml
 
 class EnvConfig(TypedDict):
-    DROP_FILE_BUCKET: str
-    PROCESSED_BUCKET: str
+    DROP_BRD_BUCKET: str
+    BRD_PROCESSED_BUCKET: str
     FIRSTORE_DATABASE_ID: str
     METADATA_COLLECTION: str
     DOC_INDEX_TOPIC: str
@@ -35,8 +35,8 @@ def load_config() -> EnvConfig:
     
     # Validate required variables
     required_vars = [
-        "DROP_FILE_BUCKET",
-        "PROCESSED_BUCKET",
+        "DROP_BRD_BUCKET",
+        "BRD_PROCESSED_BUCKET",
         "FIRSTORE_DATABASE_ID",
         "METADATA_COLLECTION",
         "DOC_INDEX_TOPIC"
@@ -47,8 +47,8 @@ def load_config() -> EnvConfig:
         raise ValueError(f"Missing required environment variables: {', '.join(missing)}")
     
     return {
-        "DROP_FILE_BUCKET": os.getenv("DROP_FILE_BUCKET"),
-        "PROCESSED_BUCKET": os.getenv("PROCESSED_BUCKET"),
+        "DROP_BRD_BUCKET": os.getenv("DROP_BRD_BUCKET"),
+        "BRD_PROCESSED_BUCKET": os.getenv("BRD_PROCESSED_BUCKET"),
         "FIRSTORE_DATABASE_ID": os.getenv("FIRSTORE_DATABASE_ID"),
         "METADATA_COLLECTION": os.getenv("METADATA_COLLECTION"),
         "DOC_INDEX_TOPIC": os.getenv("DOC_INDEX_TOPIC")
@@ -186,8 +186,8 @@ from unittest.mock import patch
 def mock_env():
     """Fixture to provide test environment variables"""
     env_vars = {
-        "DROP_FILE_BUCKET": "test-bucket",
-        "PROCESSED_BUCKET": "test-processed",
+        "DROP_BRD_BUCKET": "test-bucket",
+        "BRD_PROCESSED_BUCKET": "test-processed",
         "FIRSTORE_DATABASE_ID": "test-db",
         "METADATA_COLLECTION": "test-collection",
         "DOC_INDEX_TOPIC": "test-topic"
@@ -198,7 +198,7 @@ def mock_env():
 @pytest.mark.asyncio
 async def test_function(mock_env):
     config = load_config()
-    assert config["DROP_FILE_BUCKET"] == "test-bucket"
+    assert config["DROP_BRD_BUCKET"] == "test-bucket"
     # Test implementation
 
 ### 7. Dependency Management

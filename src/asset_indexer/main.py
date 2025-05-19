@@ -1,7 +1,7 @@
 """
 asset_indexer – single-purpose Cloud Function.
 
-• Copies a file from DROP_FILE_BUCKET ➜ PROCESSED_BUCKET
+• Copies a file from DROP_BRD_BUCKET ➜ BRD_PROCESSED_BUCKET
 • Logs execution metadata in Firestore
 • Publishes a JSON message to DOC_INDEX_TOPIC
 """
@@ -20,8 +20,8 @@ from time import sleep
 import functions_framework
 from google.cloud import firestore, pubsub_v1, storage
 
-# ── Config from env (defaults only for local smoke-tests) ──────────────────
-PROJECT_ID          = os.getenv("GOOGLE_CLOUD_PROJECT", "genai-brd-qi")
+# ── Config from env (all environment variables are required) ──────────────────
+PROJECT_ID          = os.getenv("GOOGLE_CLOUD_PROJECT")
 
 # Set emulator environment variables only if not running in GCP
 def running_in_gcp():
@@ -34,25 +34,17 @@ if not running_in_gcp():
     if os.getenv("FIREBASE_STORAGE_EMULATOR_HOST") is None:
         os.environ["FIREBASE_STORAGE_EMULATOR_HOST"] = "127.0.0.1:9199"
 
-SOURCE_BUCKET       = os.getenv("DROP_FILE_BUCKET", "genai-brd-qi").strip()
-# For local development, use the same bucket
-DEST_BUCKET         = os.getenv("PROCESSED_BUCKET", SOURCE_BUCKET).strip()
+SOURCE_BUCKET       = os.getenv("DROP_BRD_BUCKET")
+DEST_BUCKET         = os.getenv("BRD_PROCESSED_BUCKET")
+COLLECTION_NAME     = os.getenv("METADATA_COLLECTION")
+PUBSUB_TOPIC_NAME   = os.getenv("DOC_INDEX_TOPIC")
+FIRESTORE_DATABASE_ID = os.getenv("FIRESTORE_DATABASE_ID")
 
-COLLECTION_NAME     = os.getenv("METADATA_COLLECTION", "metadata")
-PUBSUB_TOPIC_NAME   = os.getenv("DOC_INDEX_TOPIC", "document-indexer")
 
-FIRESTORE_DATABASE_ID = os.getenv("FIRESTORE_DATABASE_ID", "default")
-
-# ── Clients (reuse across invocations) ─────────────────────────────────────
 storage_client = storage.Client()
 pubsub_client  = pubsub_v1.PublisherClient()
 topic_path     = pubsub_client.topic_path(PROJECT_ID, PUBSUB_TOPIC_NAME)
 
-print(f"[DEBUG] Initializing Firestore client:")
-print(f"[DEBUG] - Project ID: {PROJECT_ID}")
-print(f"[DEBUG] - Database ID: {FIRESTORE_DATABASE_ID}")
-print(f"[DEBUG] - Collection: {COLLECTION_NAME}")
-print(f"[DEBUG] - Emulator mode: {not running_in_gcp()}")
 
 # Initialize Firestore with the correct database and emulator settings
 if not running_in_gcp():
@@ -64,8 +56,8 @@ else:
 # ───────────────────────────────────────────────────────────────────────────
 
 print(f"[DEBUG] GOOGLE_CLOUD_PROJECT={os.getenv('GOOGLE_CLOUD_PROJECT')}")
-print(f"[DEBUG] DROP_FILE_BUCKET={os.getenv('DROP_FILE_BUCKET')}")
-print(f"[DEBUG] PROCESSED_BUCKET={os.getenv('PROCESSED_BUCKET')}")
+print(f"[DEBUG] DROP_BRD_BUCKET={os.getenv('DROP_BRD_BUCKET')}")
+print(f"[DEBUG] BRD_PROCESSED_BUCKET={os.getenv('BRD_PROCESSED_BUCKET')}")
 print(f"[DEBUG] METADATA_COLLECTION={os.getenv('METADATA_COLLECTION')}")
 print(f"[DEBUG] DOC_INDEX_TOPIC={os.getenv('DOC_INDEX_TOPIC')}")
 print(f"[DEBUG] SOURCE_BUCKET={SOURCE_BUCKET}")

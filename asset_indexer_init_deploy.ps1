@@ -8,19 +8,19 @@ $EnvFile    = "env.yaml"
 $SourcePath = "src/asset_indexer"
 $EntryPoint = "asset_indexer"
 
-# 1. Parse DROP_FILE_BUCKET and PROCESSED_BUCKET from env.yaml
+# 1. Parse DROP_BRD_BUCKET and BRD_PROCESSED_BUCKET from env.yaml
 if (-not (Test-Path $EnvFile)) {
   Write-Error "❌ Missing env.yaml"
   exit 1
 }
-$DropBucket = (Get-Content $EnvFile | Where-Object { $_ -match '^DROP_FILE_BUCKET:' }) -replace '^DROP_FILE_BUCKET:\s*', ''
-$ProcessedBucket = (Get-Content $EnvFile | Where-Object { $_ -match '^PROCESSED_BUCKET:' }) -replace '^PROCESSED_BUCKET:\s*', ''
+$DropBucket = (Get-Content $EnvFile | Where-Object { $_ -match '^DROP_BRD_BUCKET:' }) -replace '^DROP_BRD_BUCKET:\s*', ''
+$ProcessedBucket = (Get-Content $EnvFile | Where-Object { $_ -match '^BRD_PROCESSED_BUCKET:' }) -replace '^BRD_PROCESSED_BUCKET:\s*', ''
 if (-not $DropBucket) {
-  Write-Error "❌ Could not extract DROP_FILE_BUCKET from env.yaml"
+  Write-Error "❌ Could not extract DROP_BRD_BUCKET from env.yaml"
   exit 1
 }
 if (-not $ProcessedBucket) {
-  Write-Error "❌ Could not extract PROCESSED_BUCKET from env.yaml"
+  Write-Error "❌ Could not extract BRD_PROCESSED_BUCKET from env.yaml"
   exit 1
 }
 

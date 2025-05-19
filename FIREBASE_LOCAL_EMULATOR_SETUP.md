@@ -13,7 +13,7 @@ This document explains how local Firebase emulation is set up for this project, 
 
 ## 2. Environment Variables
 
-The following environment variables are used to ensure all code connects to the local emulators and not production:
+The following environment variables are required for the code to connect to the local emulators:
 
 | Variable                        | Purpose                                 | Example Value         |
 |----------------------------------|-----------------------------------------|----------------------|
@@ -21,10 +21,14 @@ The following environment variables are used to ensure all code connects to the 
 | `FIREBASE_STORAGE_EMULATOR_HOST` | Storage emulator host/port              | `127.0.0.1:9199`     |
 | `FUNCTIONS_EMULATOR`             | Indicates functions are running locally | `true`               |
 | `GOOGLE_CLOUD_PROJECT`           | Project ID                              | `genai-brd-qi`       |
-| `FIRESTORE_DATABASE_ID`          | Firestore database (usually `default`)  | `default`            |
+| `FIRESTORE_DATABASE_ID`          | Firestore database ID                   | `default`            |
 | `METADATA_COLLECTION`            | Firestore collection name               | `metadata`           |
+| `DROP_BRD_BUCKET`                | Source bucket name                      | `genai-brd-qi`       |
+| `BRD_PROCESSED_BUCKET`           | Destination bucket name                 | `genai-brd-qi`       |
+| `DOC_INDEX_TOPIC`                | Pub/Sub topic name                      | `document-indexer`   |
 
-- These are set automatically by scripts (e.g., `asset_indexer_run_local.ps1`) or in your `.env` file.
+- All variables are required with no default values.
+- These must be set in your `.env` file or via scripts (e.g., `asset_indexer_run_local.ps1`).
 
 ---
 
@@ -64,9 +68,9 @@ Access the Emulator UI at: [http://127.0.0.1:4000](http://127.0.0.1:4000)
   ```
 - The collection name is set by:
   ```python
-  COLLECTION_NAME = os.getenv("METADATA_COLLECTION", "metadata")
+  COLLECTION_NAME = os.getenv("METADATA_COLLECTION")
   ```
-- The database ID defaults to `default` unless overridden by `FIRESTORE_DATABASE_ID`.
+- All environment variables are required with no default values.
 
 ---
 

@@ -15,13 +15,13 @@ This document explains how to set up the next function in your local Firebase em
 ---
 
 ## 2. Environment Variables
-Ensure the following environment variables are set (in your `.env` file or via your run script):
+Ensure the following environment variables are set (in your `.env` file or via your run script). All variables are required with no default values:
 
 | Variable                        | Purpose                                 | Example Value         |
 |----------------------------------|-----------------------------------------|----------------------|
 | `FIRESTORE_EMULATOR_HOST`        | Firestore emulator host/port            | `127.0.0.1:8090`     |
 | `GOOGLE_CLOUD_PROJECT`           | Project ID                              | `genai-brd-qi`       |
-| `FIRESTORE_DATABASE_ID`          | Firestore database (usually `default`)  | `default`            |
+| `FIRESTORE_DATABASE_ID`          | Firestore database ID                   | `default`            |
 | `PUBSUB_EMULATOR_HOST`           | Pub/Sub emulator host/port              | `127.0.0.1:8085`     |
 | `METADATA_COLLECTION`            | Firestore collection name               | `metadata`           |
 | `DOC_INDEX_TOPIC`                | Pub/Sub topic name                      | `document-indexer`   |
