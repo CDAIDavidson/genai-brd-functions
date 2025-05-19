@@ -54,18 +54,18 @@ setup_emulator_environment()
 storage_client = storage.Client()
 firestore_client = firestore.Client(project=PROJECT_ID)
 
-def call_content_processor(brd_workflow_id, document_id):
+def call_content_processor(document_id):
     """Call content_processor function either directly (local) or via HTTP (prod)"""
     if not running_in_gcp() and local_content_processor:
         # Local direct call if we have the imported function
         print(f"[DEBUG] Calling content_processor directly (local import)")
-        return local_content_processor(brd_workflow_id=brd_workflow_id, document_id=document_id)
+        return local_content_processor(brd_workflow_id=document_id, document_id=document_id)
     elif not running_in_gcp():
         # Local HTTP call if direct import failed
         print(f"[DEBUG] Calling content_processor via HTTP (local)")
         response = requests.post(
             "http://localhost:8083",
-            json={"brd_workflow_id": brd_workflow_id, "document_id": document_id}
+            json={"brd_workflow_id": document_id, "document_id": document_id}
         )
         if response.status_code >= 400:
             raise Exception(f"content_processor HTTP call failed: {response.text}")
@@ -83,7 +83,7 @@ def call_content_processor(brd_workflow_id, document_id):
         response = requests.post(
             function_url,
             headers={"Authorization": f"Bearer {id_token}"},
-            json={"brd_workflow_id": brd_workflow_id, "document_id": document_id}
+            json={"brd_workflow_id": document_id, "document_id": document_id}
         )
         
         if response.status_code >= 400:
@@ -118,14 +118,14 @@ def asset_indexer(cloud_event):
     print(f"[DEBUG] Setting document environment to: {environment}")
     
     inprogress_document = Document.create_function_execution(
-        id=brd_id,
         brd_workflow_id=brd_id,
         status=FunctionStatus.IN_PROGRESS,
         description="Processing BRD document",
         description_heading="Asset Indexer Function",
         environment=environment
     )
-    firestore_upsert(firestore_client, COLLECTION_NAME, inprogress_document)
+    inprogress_id = firestore_upsert(firestore_client, COLLECTION_NAME, inprogress_document, auto_id=True)
+    print(f"[DEBUG] Created in-progress document with ID: {inprogress_id}")
     
     sleep(10)
     
@@ -145,14 +145,14 @@ def asset_indexer(cloud_event):
 
         # Success log
         completed_document = Document.create_function_execution(
-            id=brd_id,
             brd_workflow_id=brd_id,
             status=FunctionStatus.COMPLETED,
             description="Successfully processed BRD document",
             description_heading="Asset Indexer Function",
             environment=environment
         )
-        firestore_upsert(firestore_client, COLLECTION_NAME, completed_document)
+        completed_id = firestore_upsert(firestore_client, COLLECTION_NAME, completed_document, auto_id=True)
+        print(f"[DEBUG] Created completed document with ID: {completed_id}")
 
         # Call content_processor using the appropriate method
         print(f"[DEBUG] Calling content_processor with brd_workflow_id={brd_id}")
@@ -162,7 +162,7 @@ def asset_indexer(cloud_event):
         }
         
         try:
-            result = call_content_processor(brd_id, brd_id)
+            result = call_content_processor(brd_id)
             print(f"[DEBUG] Successfully called content_processor for brd_workflow_id={brd_id}. Result: {result}")
         except Exception as func_exc:
             print(f"[ERROR] Failed to call content_processor: {str(func_exc)}", file=sys.stderr)
@@ -173,7 +173,6 @@ def asset_indexer(cloud_event):
     except Exception as exc:
         # Failure log
         failed_document = Document.create_function_execution(
-            id=brd_id,
             brd_workflow_id=brd_id,
             status=FunctionStatus.FAILED,
             description=f"Failed to process BRD document: {str(exc)}",
@@ -183,6 +182,7 @@ def asset_indexer(cloud_event):
             environment=environment,
             error=str(exc)
         )
-        firestore_upsert(firestore_client, COLLECTION_NAME, failed_document)
+        failed_id = firestore_upsert(firestore_client, COLLECTION_NAME, failed_document, auto_id=True)
+        print(f"[DEBUG] Created failed document with ID: {failed_id}")
         print(f"[{brd_id}] ERROR: {exc}", file=sys.stderr)
         raise

@@ -105,12 +105,12 @@ class Document:
     
     def __init__(
         self, 
-        id: str, 
         item_type: DocumentType,
         brd_workflow_id: str,
         description: str,
         description_heading: str,
-        item: Dict[str, Any]
+        item: Dict[str, Any],
+        id: Optional[str] = None
     ):
         self.id = id
         self.item_type = item_type
@@ -121,24 +121,29 @@ class Document:
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert document to dictionary for Firestore storage"""
-        return {
-            "id": self.id,
+        doc_dict = {
             "item_type": self.item_type.value,
             "brd_workflow_id": self.brd_workflow_id,
             "description": self.description,
             "description_heading": self.description_heading,
             "item": self.item
         }
+        
+        # Include ID only if it exists
+        if self.id:
+            doc_dict["id"] = self.id
+            
+        return doc_dict
     
     @classmethod
     def create_function_execution(
         cls,
-        id: str, 
         brd_workflow_id: str,
         status: FunctionStatus,
         description: str = "",
         description_heading: str = "",
         environment: str = "unknown",
+        id: Optional[str] = None,
         **extras: Any
     ) -> 'Document':
         """Create a function execution document"""

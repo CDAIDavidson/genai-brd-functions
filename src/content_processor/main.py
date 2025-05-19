@@ -94,15 +94,15 @@ def extract_tables_from_content(document_content):
     return simulated_tables
 
 # ── Main Function ─────────────────────────────────────────────────────
-def content_processor(brd_workflow_id=None, document_id=None):
+def content_processor(document_id=None, brd_workflow_id=None):
     """
     Process BRD document content.
     
     Can be triggered directly by other functions via HTTP.
     
     Args:
-        brd_workflow_id: BRD workflow ID
-        document_id: Document ID
+        document_id: Document ID (also used as brd_workflow_id if not specified)
+        brd_workflow_id: Optional BRD workflow ID (defaults to document_id)
         
     Returns:
         Processing results dictionary if successful
@@ -110,17 +110,21 @@ def content_processor(brd_workflow_id=None, document_id=None):
     print(f"[Function Started] content_processor")
     
     try:
+        # If brd_workflow_id not provided, use document_id for both
+        if brd_workflow_id is None:
+            brd_workflow_id = document_id
+            
         # Validate required parameters
-        if brd_workflow_id and document_id:
-            # Direct function call with provided IDs
-            print(f"[DEBUG] Direct function call with brd_workflow_id={brd_workflow_id}, document_id={document_id}")
+        if document_id:
+            # Direct function call with provided ID
+            print(f"[DEBUG] Direct function call with document_id={document_id}")
         else:
-            # Missing required parameters
-            error_message = "Missing required parameters: brd_workflow_id and document_id must be provided"
+            # Missing required parameter
+            error_message = "Missing required parameter: document_id must be provided"
             print(f"[ERROR] {error_message}")
             raise ValueError(error_message)
     
-        print(f"[DEBUG] Starting content_processor for brd_workflow_id={brd_workflow_id}, document_id={document_id}")
+        print(f"[DEBUG] Starting content_processor for document_id={document_id}")
         
         # Update in progress status
         environment = get_environment_name()
@@ -128,14 +132,14 @@ def content_processor(brd_workflow_id=None, document_id=None):
         
         # Create in-progress document record
         inprogress_document = Document.create_function_execution(
-            id=document_id,
             brd_workflow_id=brd_workflow_id,
             status=FunctionStatus.IN_PROGRESS,
             description="Processing BRD document content",
             description_heading="Content Processor Function",
             environment=environment
         )
-        firestore_upsert(firestore_client, COLLECTION_NAME, inprogress_document)
+        inprogress_id = firestore_upsert(firestore_client, COLLECTION_NAME, inprogress_document, auto_id=True)
+        print(f"[DEBUG] Created in-progress document with ID: {inprogress_id}")
         
         # Download document content from storage
         document_content = download_document_content(document_id)
@@ -155,7 +159,6 @@ def content_processor(brd_workflow_id=None, document_id=None):
         
         # Log success status in Firestore
         completed_document = Document.create_function_execution(
-            id=document_id,
             brd_workflow_id=brd_workflow_id,
             status=FunctionStatus.COMPLETED,
             description="Successfully processed BRD content",
@@ -163,16 +166,16 @@ def content_processor(brd_workflow_id=None, document_id=None):
             environment=environment,
             processing_results=processing_results
         )
-        firestore_upsert(firestore_client, COLLECTION_NAME, completed_document)
+        completed_id = firestore_upsert(firestore_client, COLLECTION_NAME, completed_document, auto_id=True)
+        print(f"[DEBUG] Created completed document with ID: {completed_id}")
 
         print(f"[{document_id}] Successfully processed document content with {len(extracted_tables)} tables")
         return processing_results
 
     except Exception as exc:
         # Log failure status in Firestore
-        if document_id and brd_workflow_id:
+        if document_id:
             failed_document = Document.create_function_execution(
-                id=document_id,
                 brd_workflow_id=brd_workflow_id,
                 status=FunctionStatus.FAILED,
                 description=f"Failed to process BRD content: {str(exc)}",
@@ -180,7 +183,8 @@ def content_processor(brd_workflow_id=None, document_id=None):
                 environment=get_environment_name(),
                 error=str(exc)
             )
-            firestore_upsert(firestore_client, COLLECTION_NAME, failed_document)
+            failed_id = firestore_upsert(firestore_client, COLLECTION_NAME, failed_document, auto_id=True)
+            print(f"[DEBUG] Created error document with ID: {failed_id}")
         
         print(f"[{document_id or 'unknown'}] ERROR: {exc}", file=sys.stderr)
         raise
@@ -190,7 +194,7 @@ def content_processor(brd_workflow_id=None, document_id=None):
 def process_http_request(request):
     """HTTP request handler that delegates to the main content_processor function.
     
-    Expects JSON payload with brd_workflow_id and document_id.
+    Expects JSON payload with document_id.
     """
     try:
         request_json = request.get_json(silent=True)
@@ -198,16 +202,16 @@ def process_http_request(request):
             return {"error": "Missing JSON payload"}, 400
         
         # Extract parameters from request
-        brd_workflow_id = request_json.get("brd_workflow_id")
         document_id = request_json.get("document_id")
+        brd_workflow_id = request_json.get("brd_workflow_id")  # Optional
         
-        if not brd_workflow_id or not document_id:
-            return {"error": "Missing required parameters: brd_workflow_id and document_id"}, 400
+        if not document_id:
+            return {"error": "Missing required parameter: document_id"}, 400
         
         # Call the main function
         result = content_processor(
-            brd_workflow_id=brd_workflow_id,
-            document_id=document_id
+            document_id=document_id,
+            brd_workflow_id=brd_workflow_id
         )
         
         return {"status": "success", "result": result}, 200
