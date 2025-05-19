@@ -6,10 +6,7 @@ asset_indexer – single-purpose Cloud Function.
 • Publishes a JSON message to DOC_INDEX_TOPIC
 """
 
-from dotenv import load_dotenv
-
-load_dotenv()                      # <- enables local .env; ignored in prod
-
+# Standard library imports
 import json
 import os
 import secrets
@@ -17,54 +14,65 @@ import sys
 from datetime import datetime
 from time import sleep
 
+# Third-party imports
+from dotenv import load_dotenv
 import functions_framework
 from google.cloud import firestore, pubsub_v1, storage
 
+# Load dotenv for local development (ignored in prod)
+load_dotenv()
+
+# ── Environment detection functions ─────────────────────────────────────────
+def running_in_gcp():
+    """Check if the function is running in GCP (not in emulator)
+    
+    Google Cloud Functions and Cloud Run set several environment variables
+    in production environments that we can use to detect where we're running.
+    """
+    # Check for any of these GCP-specific environment variables
+    gcp_indicators = [
+        "K_SERVICE",              # Cloud Run/Functions service name
+        "FUNCTION_NAME",          # Cloud Functions specific
+        "FUNCTION_TARGET",        # Cloud Functions specific
+        "GOOGLE_CLOUD_PROJECT",   # Set in most GCP environments
+        "FUNCTION_SIGNATURE_TYPE" # Cloud Functions specific
+    ]
+    
+    return any(os.getenv(var) is not None for var in gcp_indicators)
+
+def is_storage_emulator():
+    """Check if using storage emulator"""
+    return os.environ.get("FIREBASE_STORAGE_EMULATOR_HOST") is not None
+
 # ── Config from env (all environment variables are required) ──────────────────
-PROJECT_ID          = os.getenv("GOOGLE_CLOUD_PROJECT")
+PROJECT_ID = os.getenv("GOOGLE_CLOUD_PROJECT")
+SOURCE_BUCKET = os.getenv("DROP_BRD_BUCKET")
+DEST_BUCKET = os.getenv("BRD_PROCESSED_BUCKET")
+COLLECTION_NAME = os.getenv("METADATA_COLLECTION")
+PUBSUB_TOPIC_NAME = os.getenv("DOC_INDEX_TOPIC")
+FIRESTORE_DATABASE_ID = os.getenv("FIRESTORE_DATABASE_ID")
 
 # Set emulator environment variables only if not running in GCP
-def running_in_gcp():
-    # GCP sets this environment variable in Cloud Functions/Run
-    return os.getenv("K_SERVICE") is not None
-
 if not running_in_gcp():
     if os.getenv("FIRESTORE_EMULATOR_HOST") is None:
         os.environ["FIRESTORE_EMULATOR_HOST"] = "127.0.0.1:8090"
     if os.getenv("FIREBASE_STORAGE_EMULATOR_HOST") is None:
         os.environ["FIREBASE_STORAGE_EMULATOR_HOST"] = "127.0.0.1:9199"
 
-SOURCE_BUCKET       = os.getenv("DROP_BRD_BUCKET")
-DEST_BUCKET         = os.getenv("BRD_PROCESSED_BUCKET")
-COLLECTION_NAME     = os.getenv("METADATA_COLLECTION")
-PUBSUB_TOPIC_NAME   = os.getenv("DOC_INDEX_TOPIC")
-FIRESTORE_DATABASE_ID = os.getenv("FIRESTORE_DATABASE_ID")
-
-
+# ── Client initialization ──────────────────────────────────────────────────
 storage_client = storage.Client()
-pubsub_client  = pubsub_v1.PublisherClient()
-topic_path     = pubsub_client.topic_path(PROJECT_ID, PUBSUB_TOPIC_NAME)
-
+pubsub_client = pubsub_v1.PublisherClient()
+topic_path = pubsub_client.topic_path(PROJECT_ID, PUBSUB_TOPIC_NAME)
 
 # Initialize Firestore with the correct database and emulator settings
 if not running_in_gcp():
     print(f"[DEBUG] Using emulator at {os.environ['FIRESTORE_EMULATOR_HOST']}")
     print(f"[DEBUG] View data at: http://127.0.0.1:4000/firestore/data/{FIRESTORE_DATABASE_ID}/{COLLECTION_NAME}")
-    firestore_client = firestore.Client(project=PROJECT_ID)
-else:
-    firestore_client = firestore.Client(project=PROJECT_ID)
-# ───────────────────────────────────────────────────────────────────────────
 
-print(f"[DEBUG] GOOGLE_CLOUD_PROJECT={os.getenv('GOOGLE_CLOUD_PROJECT')}")
-print(f"[DEBUG] DROP_BRD_BUCKET={os.getenv('DROP_BRD_BUCKET')}")
-print(f"[DEBUG] BRD_PROCESSED_BUCKET={os.getenv('BRD_PROCESSED_BUCKET')}")
-print(f"[DEBUG] METADATA_COLLECTION={os.getenv('METADATA_COLLECTION')}")
-print(f"[DEBUG] DOC_INDEX_TOPIC={os.getenv('DOC_INDEX_TOPIC')}")
-print(f"[DEBUG] SOURCE_BUCKET={SOURCE_BUCKET}")
-print(f"[DEBUG] DEST_BUCKET={DEST_BUCKET}")
-print(f"[DEBUG] COLLECTION_NAME={COLLECTION_NAME}")
-print(f"[DEBUG] PUBSUB_TOPIC_NAME={PUBSUB_TOPIC_NAME}")
+# Initialize Firestore client (same for both environments)
+firestore_client = firestore.Client(project=PROJECT_ID)
 
+# ── Helper functions ────────────────────────────────────────────────────────
 def _log(brd_id: str, status: str, start_time: datetime | None, **extras):
     """Insert or update a Firestore doc that tracks this invocation."""
     data = {
@@ -97,9 +105,7 @@ def _log(brd_id: str, status: str, start_time: datetime | None, **extras):
         print(f"[ERROR] Failed to write to Firestore: {str(e)}", file=sys.stderr)
         raise
 
-def is_storage_emulator():
-    return os.getenv("FIREBASE_STORAGE_EMULATOR_HOST") is not None
-
+# ── Main Cloud Function ─────────────────────────────────────────────────────
 @functions_framework.cloud_event
 def asset_indexer(cloud_event):
     start_time = datetime.utcnow()
@@ -107,19 +113,19 @@ def asset_indexer(cloud_event):
     # Extract bucket & filename
     if cloud_event is None:  # local / unit-test
         src_bucket_name = SOURCE_BUCKET
-        src_file_name   = "mock_confluence_brd_redacted.html"
+        src_file_name = "mock_confluence_brd_redacted.html"
     else:
-        sleep(1)                                # GCS metadata latency
-        payload        = cloud_event.data
+        sleep(1)  # GCS metadata latency
+        payload = cloud_event.data
         src_bucket_name = payload["bucket"]
-        src_file_name   = payload["name"]
+        src_file_name = payload["name"]
 
-    ext            = os.path.splitext(src_file_name)[1]
-    brd_id         = secrets.token_hex(5)
+    ext = os.path.splitext(src_file_name)[1]
+    brd_id = secrets.token_hex(5)
     print(f"[DEBUG] brd_id={brd_id}")
     dest_file_name = f"{brd_id}{ext}"
 
-    src_bucket  = storage_client.bucket(src_bucket_name)
+    src_bucket = storage_client.bucket(src_bucket_name)
     dest_bucket = storage_client.bucket(DEST_BUCKET)
 
     # Initial log
@@ -127,7 +133,7 @@ def asset_indexer(cloud_event):
          source=src_file_name, dest=dest_file_name)
 
     try:
-        src_blob  = src_bucket.blob(src_file_name)
+        src_blob = src_bucket.blob(src_file_name)
         # Use workaround only if running in the emulator
         if is_storage_emulator():
             content = src_blob.download_as_bytes()
