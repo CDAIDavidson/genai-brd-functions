@@ -15,7 +15,7 @@ class DocumentType(str, Enum):
     FUNCTION_EXECUTION_DATA = 'function_execution_data'
 
 class FunctionStatus(str, Enum):
-    IN_PROGRESS = 'inprogress'
+    IN_PROGRESS = 'in progress'
     COMPLETED = 'completed'
     FAILED = 'failed'
 

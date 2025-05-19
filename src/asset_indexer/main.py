@@ -33,16 +33,27 @@ def running_in_gcp():
     Google Cloud Functions and Cloud Run set several environment variables
     in production environments that we can use to detect where we're running.
     """
-    # Check for any of these GCP-specific environment variables
+    # Check for emulator environment variables first - these take precedence
+    if os.getenv("FIRESTORE_EMULATOR_HOST") or os.getenv("FIREBASE_STORAGE_EMULATOR_HOST"):
+        print("[DEBUG] Running in emulator environment")
+        return False
+        
+    # Check for GCP-specific environment variables
     gcp_indicators = [
         "K_SERVICE",              # Cloud Run/Functions service name
         "FUNCTION_NAME",          # Cloud Functions specific
         "FUNCTION_TARGET",        # Cloud Functions specific
-        "GOOGLE_CLOUD_PROJECT",   # Set in most GCP environments
         "FUNCTION_SIGNATURE_TYPE" # Cloud Functions specific
     ]
     
-    return any(os.getenv(var) is not None for var in gcp_indicators)
+    # Debug output
+    for var in gcp_indicators:
+        if os.getenv(var):
+            print(f"[DEBUG] Found GCP indicator: {var}={os.getenv(var)}")
+    
+    is_gcp = any(os.getenv(var) is not None for var in gcp_indicators)
+    print(f"[DEBUG] running_in_gcp() returned: {is_gcp}")
+    return is_gcp
 
 def is_storage_emulator():
     """Check if using storage emulator"""
@@ -62,6 +73,20 @@ if not running_in_gcp():
         os.environ["FIRESTORE_EMULATOR_HOST"] = "127.0.0.1:8090"
     if os.getenv("FIREBASE_STORAGE_EMULATOR_HOST") is None:
         os.environ["FIREBASE_STORAGE_EMULATOR_HOST"] = "127.0.0.1:9199"
+
+# Force emulator settings for local development
+# FIRESTORE_EMULATOR_HOST and FIREBASE_STORAGE_EMULATOR_HOST are strong indicators
+# that we're in a local development environment
+if not os.getenv("K_SERVICE"):  # Not in Cloud Run/Functions
+    # Set default emulator hosts if not already set
+    if "FIRESTORE_EMULATOR_HOST" not in os.environ:
+        print("[DEBUG] Setting default FIRESTORE_EMULATOR_HOST")
+        os.environ["FIRESTORE_EMULATOR_HOST"] = "127.0.0.1:8090"
+    if "FIREBASE_STORAGE_EMULATOR_HOST" not in os.environ:
+        print("[DEBUG] Setting default FIREBASE_STORAGE_EMULATOR_HOST")
+        os.environ["FIREBASE_STORAGE_EMULATOR_HOST"] = "127.0.0.1:9199"
+    
+    print(f"[DEBUG] Using emulators: FIRESTORE={os.environ.get('FIRESTORE_EMULATOR_HOST')}, STORAGE={os.environ.get('FIREBASE_STORAGE_EMULATOR_HOST')}")
 
 # ── Client initialization ──────────────────────────────────────────────────
 storage_client = storage.Client()
@@ -91,18 +116,21 @@ def asset_indexer(cloud_event):
     src_bucket = storage_client.bucket(src_bucket_name)
     dest_bucket = storage_client.bucket(DEST_BUCKET)
 
-    # Updarte in progress status
-    document = Document.create_function_execution(
+    # Update in progress status
+    environment = "emulator" if os.environ.get("FIRESTORE_EMULATOR_HOST") else "production"
+    print(f"[DEBUG] Setting document environment to: {environment}")
+    
+    inprogress_document = Document.create_function_execution(
         id=brd_id,
         brd_workflow_id=brd_id,
         status=FunctionStatus.IN_PROGRESS,
         description="Processing BRD document",
         description_heading="Asset Indexer Function",
-        environment="emulator" if not running_in_gcp() else "production"
+        environment=environment
     )
-    firestore_upsert(firestore_client, COLLECTION_NAME, document)
+    firestore_upsert(firestore_client, COLLECTION_NAME, inprogress_document)
     
-    sleep(10)  # GCS metadata latency
+    sleep(10)
     
     try:
         src_blob = src_bucket.blob(src_file_name)
@@ -125,10 +153,7 @@ def asset_indexer(cloud_event):
             status=FunctionStatus.COMPLETED,
             description="Successfully processed BRD document",
             description_heading="Asset Indexer Function",
-            source=src_file_name,
-            dest=dest_file_name,
-            environment="emulator" if not running_in_gcp() else "production",
-            duration=(datetime.utcnow() - start_time).total_seconds()
+            environment=environment
         )
         firestore_upsert(firestore_client, COLLECTION_NAME, completed_document)
 
@@ -154,7 +179,7 @@ def asset_indexer(cloud_event):
             description_heading="Asset Indexer Function",
             source=src_file_name,
             dest=dest_file_name,
-            environment="emulator" if not running_in_gcp() else "production",
+            environment=environment,
             error=str(exc)
         )
         firestore_upsert(firestore_client, COLLECTION_NAME, failed_document)
