@@ -22,42 +22,10 @@ from google.cloud import firestore, pubsub_v1, storage
 # Local imports - changing to relative imports
 from .common.base import Document, FunctionStatus
 from .common.firestore_utils import firestore_upsert
+from .common import running_in_gcp, is_storage_emulator, get_environment_name, setup_emulator_environment
 
 # Load dotenv for local development (ignored in prod)
 load_dotenv()
-
-# ── Environment detection functions ─────────────────────────────────────────
-def running_in_gcp():
-    """Check if the function is running in GCP (not in emulator)
-    
-    Google Cloud Functions and Cloud Run set several environment variables
-    in production environments that we can use to detect where we're running.
-    """
-    # Check for emulator environment variables first - these take precedence
-    if os.getenv("FIRESTORE_EMULATOR_HOST") or os.getenv("FIREBASE_STORAGE_EMULATOR_HOST"):
-        print("[DEBUG] Running in emulator environment")
-        return False
-        
-    # Check for GCP-specific environment variables
-    gcp_indicators = [
-        "K_SERVICE",              # Cloud Run/Functions service name
-        "FUNCTION_NAME",          # Cloud Functions specific
-        "FUNCTION_TARGET",        # Cloud Functions specific
-        "FUNCTION_SIGNATURE_TYPE" # Cloud Functions specific
-    ]
-    
-    # Debug output
-    for var in gcp_indicators:
-        if os.getenv(var):
-            print(f"[DEBUG] Found GCP indicator: {var}={os.getenv(var)}")
-    
-    is_gcp = any(os.getenv(var) is not None for var in gcp_indicators)
-    print(f"[DEBUG] running_in_gcp() returned: {is_gcp}")
-    return is_gcp
-
-def is_storage_emulator():
-    """Check if using storage emulator"""
-    return os.environ.get("FIREBASE_STORAGE_EMULATOR_HOST") is not None
 
 # ── Config from env (all environment variables are required) ──────────────────
 PROJECT_ID = os.getenv("GOOGLE_CLOUD_PROJECT")
@@ -67,26 +35,8 @@ COLLECTION_NAME = os.getenv("METADATA_COLLECTION")
 PUBSUB_TOPIC_NAME = os.getenv("DOC_INDEX_TOPIC")
 FIRESTORE_DATABASE_ID = os.getenv("FIRESTORE_DATABASE_ID")
 
-# Set emulator environment variables only if not running in GCP
-if not running_in_gcp():
-    if os.getenv("FIRESTORE_EMULATOR_HOST") is None:
-        os.environ["FIRESTORE_EMULATOR_HOST"] = "127.0.0.1:8090"
-    if os.getenv("FIREBASE_STORAGE_EMULATOR_HOST") is None:
-        os.environ["FIREBASE_STORAGE_EMULATOR_HOST"] = "127.0.0.1:9199"
-
-# Force emulator settings for local development
-# FIRESTORE_EMULATOR_HOST and FIREBASE_STORAGE_EMULATOR_HOST are strong indicators
-# that we're in a local development environment
-if not os.getenv("K_SERVICE"):  # Not in Cloud Run/Functions
-    # Set default emulator hosts if not already set
-    if "FIRESTORE_EMULATOR_HOST" not in os.environ:
-        print("[DEBUG] Setting default FIRESTORE_EMULATOR_HOST")
-        os.environ["FIRESTORE_EMULATOR_HOST"] = "127.0.0.1:8090"
-    if "FIREBASE_STORAGE_EMULATOR_HOST" not in os.environ:
-        print("[DEBUG] Setting default FIREBASE_STORAGE_EMULATOR_HOST")
-        os.environ["FIREBASE_STORAGE_EMULATOR_HOST"] = "127.0.0.1:9199"
-    
-    print(f"[DEBUG] Using emulators: FIRESTORE={os.environ.get('FIRESTORE_EMULATOR_HOST')}, STORAGE={os.environ.get('FIREBASE_STORAGE_EMULATOR_HOST')}")
+# Set up emulator environment if needed
+setup_emulator_environment()
 
 # ── Client initialization ──────────────────────────────────────────────────
 storage_client = storage.Client()
@@ -117,7 +67,7 @@ def asset_indexer(cloud_event):
     dest_bucket = storage_client.bucket(DEST_BUCKET)
 
     # Update in progress status
-    environment = "emulator" if os.environ.get("FIRESTORE_EMULATOR_HOST") else "production"
+    environment = get_environment_name()
     print(f"[DEBUG] Setting document environment to: {environment}")
     
     inprogress_document = Document.create_function_execution(
