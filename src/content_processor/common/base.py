@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 import logging
-from typing import Any, Dict, Optional, Literal, TypedDict, Union
+from typing import Any, Dict, Optional, Literal, TypedDict, Union, List
 from datetime import datetime
 from enum import Enum
 
@@ -18,6 +18,72 @@ class FunctionStatus(str, Enum):
     IN_PROGRESS = 'in progress'
     COMPLETED = 'completed'
     FAILED = 'failed'
+
+class PubSubMessage:
+    """Standard structure for Pub/Sub messages across the application"""
+    
+    def __init__(
+        self,
+        brd_workflow_id: str,
+        document_id: str,
+        data: Optional[Dict[str, Any]] = None,
+        processing_complete: bool = False
+    ):
+        self.brd_workflow_id = brd_workflow_id
+        self.document_id = document_id
+        self.data = data or {}
+        self.processing_complete = processing_complete
+        self.timestamp = datetime.utcnow().isoformat() + "Z"
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert message to dictionary for Pub/Sub publishing"""
+        message = {
+            "brd_workflow_id": self.brd_workflow_id,
+            "document_id": self.document_id,
+            "timestamp": self.timestamp,
+            "processing_complete": self.processing_complete
+        }
+        
+        # Include data if provided
+        if self.data:
+            message["data"] = self.data
+            
+        return message
+    
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'PubSubMessage':
+        """Create a PubSubMessage from a dictionary"""
+        return cls(
+            brd_workflow_id=data.get("brd_workflow_id"),
+            document_id=data.get("document_id"),
+            data=data.get("data"),
+            processing_complete=data.get("processing_complete", False)
+        )
+    
+    @classmethod
+    def from_cloud_event(cls, cloud_event: Dict[str, Any]) -> 'PubSubMessage':
+        """Create a PubSubMessage from a Cloud Function event"""
+        import base64
+        import json
+        
+        if cloud_event and "message" in cloud_event and "data" in cloud_event["message"]:
+            message_data = cloud_event["message"]["data"]
+            
+            # Check if it's a string that needs decoding
+            if isinstance(message_data, str):
+                try:
+                    decoded_data = base64.b64decode(message_data).decode('utf-8')
+                    message_dict = json.loads(decoded_data)
+                except Exception:
+                    # Try parsing directly if base64 decode fails
+                    message_dict = json.loads(message_data)
+            else:
+                message_dict = message_data
+                
+            return cls.from_dict(message_dict)
+        
+        # Return a default message if parsing fails
+        return cls("unknown_workflow_id", "unknown_document_id")
 
 class FunctionData(TypedDict):
     timestamp_created: str

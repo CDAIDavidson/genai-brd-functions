@@ -19,8 +19,8 @@ from dotenv import load_dotenv
 import functions_framework
 from google.cloud import firestore, pubsub_v1, storage
 
-# Local imports - changing to relative imports
-from .common.base import Document, FunctionStatus
+# Local imports
+from .common.base import Document, FunctionStatus, PubSubMessage
 from .common.firestore_utils import firestore_upsert
 from .common import running_in_gcp, is_storage_emulator, get_environment_name, setup_emulator_environment
 
@@ -108,11 +108,16 @@ def asset_indexer(cloud_event):
         firestore_upsert(firestore_client, COLLECTION_NAME, completed_document)
 
         # Notify downstream
-        msg = {"brd_workflow_id": brd_id, "document_id": brd_id}
-        print(f"[DEBUG] About to publish to Pub/Sub: topic_path={topic_path}, msg={msg}")
+        pubsub_message = PubSubMessage(
+            brd_workflow_id=brd_id,
+            document_id=brd_id
+        )
+        msg_data = json.dumps(pubsub_message.to_dict()).encode()
+        
+        print(f"[DEBUG] About to publish to Pub/Sub: topic_path={topic_path}, msg_dict={pubsub_message.to_dict()}")
         try:
-            pubsub_client.publish(topic_path, data=json.dumps(msg).encode()).result()
-            print(f"[DEBUG] Published to Pub/Sub: topic_path={topic_path}, msg={msg}")
+            pubsub_client.publish(topic_path, data=msg_data).result()
+            print(f"[DEBUG] Published to Pub/Sub: topic_path={topic_path}, msg_dict={pubsub_message.to_dict()}")
         except Exception as pubsub_exc:
             print(f"[ERROR] Failed to publish to Pub/Sub: {str(pubsub_exc)}", file=sys.stderr)
             raise  # Re-raise to be caught by outer try/except
