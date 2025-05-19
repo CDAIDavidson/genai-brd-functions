@@ -117,6 +117,9 @@ def asset_indexer(cloud_event):
     environment = get_environment_name()
     print(f"[DEBUG] Setting document environment to: {environment}")
     
+    # Generate a document ID to use for both in-progress and completed states
+    document_id = secrets.token_hex(8)
+    
     inprogress_document = Document.create_function_execution(
         brd_workflow_id=brd_id,
         status=FunctionStatus.IN_PROGRESS,
@@ -124,8 +127,8 @@ def asset_indexer(cloud_event):
         description_heading="Asset Indexer Function",
         environment=environment
     )
-    inprogress_id = firestore_upsert(firestore_client, COLLECTION_NAME, inprogress_document, auto_id=True)
-    print(f"[DEBUG] Created in-progress document with ID: {inprogress_id}")
+    firestore_upsert(firestore_client, COLLECTION_NAME, inprogress_document, document_id=document_id)
+    print(f"[DEBUG] Created in-progress document with ID: {document_id}")
     
     sleep(10)
     
@@ -151,8 +154,9 @@ def asset_indexer(cloud_event):
             description_heading="Asset Indexer Function",
             environment=environment
         )
-        completed_id = firestore_upsert(firestore_client, COLLECTION_NAME, completed_document, auto_id=True)
-        print(f"[DEBUG] Created completed document with ID: {completed_id}")
+        # Use the same document ID as the in-progress document
+        firestore_upsert(firestore_client, COLLECTION_NAME, completed_document, document_id=document_id)
+        print(f"[DEBUG] Updated document with ID: {document_id} to completed status")
 
         # Call content_processor using the appropriate method
         print(f"[DEBUG] Calling content_processor with brd_workflow_id={brd_id}")
@@ -182,7 +186,8 @@ def asset_indexer(cloud_event):
             environment=environment,
             error=str(exc)
         )
-        failed_id = firestore_upsert(firestore_client, COLLECTION_NAME, failed_document, auto_id=True)
-        print(f"[DEBUG] Created failed document with ID: {failed_id}")
+        # Use the same document ID as the in-progress document
+        firestore_upsert(firestore_client, COLLECTION_NAME, failed_document, document_id=document_id)
+        print(f"[DEBUG] Updated document with ID: {document_id} to failed status")
         print(f"[{brd_id}] ERROR: {exc}", file=sys.stderr)
         raise

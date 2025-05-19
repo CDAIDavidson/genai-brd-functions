@@ -11,6 +11,7 @@ import json
 import os
 import sys
 import base64
+import secrets
 from datetime import datetime
 from time import sleep
 
@@ -131,6 +132,9 @@ def content_processor(document_id=None, brd_workflow_id=None):
         print(f"[DEBUG] Setting document environment to: {environment}")
         
         # Create in-progress document record
+        # Generate a document ID to use for both in-progress and completed states
+        document_id = secrets.token_hex(8)
+        
         inprogress_document = Document.create_function_execution(
             brd_workflow_id=brd_workflow_id,
             status=FunctionStatus.IN_PROGRESS,
@@ -138,8 +142,8 @@ def content_processor(document_id=None, brd_workflow_id=None):
             description_heading="Content Processor Function",
             environment=environment
         )
-        inprogress_id = firestore_upsert(firestore_client, COLLECTION_NAME, inprogress_document, auto_id=True)
-        print(f"[DEBUG] Created in-progress document with ID: {inprogress_id}")
+        firestore_upsert(firestore_client, COLLECTION_NAME, inprogress_document, document_id=document_id)
+        print(f"[DEBUG] Created in-progress document with ID: {document_id}")
         
         # Download document content from storage
         document_content = download_document_content(document_id)
@@ -166,8 +170,9 @@ def content_processor(document_id=None, brd_workflow_id=None):
             environment=environment,
             processing_results=processing_results
         )
-        completed_id = firestore_upsert(firestore_client, COLLECTION_NAME, completed_document, auto_id=True)
-        print(f"[DEBUG] Created completed document with ID: {completed_id}")
+        # Use the same document ID as the in-progress document
+        firestore_upsert(firestore_client, COLLECTION_NAME, completed_document, document_id=document_id)
+        print(f"[DEBUG] Updated document with ID: {document_id} to completed status")
 
         print(f"[{document_id}] Successfully processed document content with {len(extracted_tables)} tables")
         return processing_results
@@ -183,8 +188,9 @@ def content_processor(document_id=None, brd_workflow_id=None):
                 environment=get_environment_name(),
                 error=str(exc)
             )
-            failed_id = firestore_upsert(firestore_client, COLLECTION_NAME, failed_document, auto_id=True)
-            print(f"[DEBUG] Created error document with ID: {failed_id}")
+            # Use the same document ID as the in-progress document
+            firestore_upsert(firestore_client, COLLECTION_NAME, failed_document, document_id=document_id)
+            print(f"[DEBUG] Updated document with ID: {document_id} to failed status")
         
         print(f"[{document_id or 'unknown'}] ERROR: {exc}", file=sys.stderr)
         raise
