@@ -12,16 +12,6 @@
       "justMyCode": false
     },
     {
-      "name": "document_analyzer",
-      "type": "python",
-      "request": "attach",
-      "connect": {
-        "host": "localhost",
-        "port": 5679
-      },
-      "justMyCode": false
-    },
-    {
       "name": "content_processor",
       "type": "python",
       "request": "attach",
@@ -30,27 +20,8 @@
         "port": 5680
       },
       "justMyCode": false
-    },
-    {
-      "name": "requirement_extractor",
-      "type": "python",
-      "request": "attach",
-      "connect": {
-        "host": "localhost",
-        "port": 5681
-      },
-      "justMyCode": false
-    },
-    {
-      "name": "summary_generator",
-      "type": "python",
-      "request": "attach",
-      "connect": {
-        "host": "localhost",
-        "port": 5682
-      },
-      "justMyCode": false
     }
+  
   ],
   "compounds": [
     {
