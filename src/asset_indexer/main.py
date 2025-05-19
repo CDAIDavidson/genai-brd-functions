@@ -79,7 +79,6 @@ def asset_indexer(cloud_event):
         src_bucket_name = SOURCE_BUCKET
         src_file_name = "mock_confluence_brd_redacted.html"
     else:
-        sleep(1)  # GCS metadata latency
         payload = cloud_event.data
         src_bucket_name = payload["bucket"]
         src_file_name = payload["name"]
@@ -92,19 +91,19 @@ def asset_indexer(cloud_event):
     src_bucket = storage_client.bucket(src_bucket_name)
     dest_bucket = storage_client.bucket(DEST_BUCKET)
 
-    # Initial log
+    # Updarte in progress status
     document = Document.create_function_execution(
         id=brd_id,
         brd_workflow_id=brd_id,
         status=FunctionStatus.IN_PROGRESS,
         description="Processing BRD document",
         description_heading="Asset Indexer Function",
-        source=src_file_name,
-        dest=dest_file_name,
         environment="emulator" if not running_in_gcp() else "production"
     )
     firestore_upsert(firestore_client, COLLECTION_NAME, document)
-
+    
+    sleep(10)  # GCS metadata latency
+    
     try:
         src_blob = src_bucket.blob(src_file_name)
         # Use workaround only if running in the emulator
