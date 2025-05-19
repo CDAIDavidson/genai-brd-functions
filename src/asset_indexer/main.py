@@ -3,7 +3,7 @@ asset_indexer – single-purpose Cloud Function.
 
 • Copies a file from DROP_BRD_BUCKET ➜ BRD_PROCESSED_BUCKET
 • Logs execution metadata in Firestore
-• Publishes a JSON message to DOC_INDEX_TOPIC
+• Publishes a JSON message to TOPIC_BRD_READY_TO_PARSE
 """
 
 # Standard library imports
@@ -32,7 +32,7 @@ PROJECT_ID = os.getenv("GOOGLE_CLOUD_PROJECT")
 SOURCE_BUCKET = os.getenv("DROP_BRD_BUCKET")
 DEST_BUCKET = os.getenv("BRD_PROCESSED_BUCKET")
 COLLECTION_NAME = os.getenv("METADATA_COLLECTION")
-PUBSUB_TOPIC_NAME = os.getenv("DOC_INDEX_TOPIC")
+PUBSUB_TOPIC_NAME = os.getenv("TOPIC_BRD_READY_TO_PARSE")
 FIRESTORE_DATABASE_ID = os.getenv("FIRESTORE_DATABASE_ID")
 
 # Set up emulator environment if needed

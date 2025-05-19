@@ -1,5 +1,5 @@
 """
-Common utilities for document analyzer functions.
+Common utilities for content processor functions.
 """
 
 # Import environment utilities for easy access

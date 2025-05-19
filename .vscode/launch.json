@@ -2,7 +2,7 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "Python: Attach",
+      "name": "asset_indexer",
       "type": "python",
       "request": "attach",
       "connect": {
@@ -10,6 +10,52 @@
         "port": 5678
       },
       "justMyCode": false
+    },
+    {
+      "name": "document_analyzer",
+      "type": "python",
+      "request": "attach",
+      "connect": {
+        "host": "localhost",
+        "port": 5679
+      },
+      "justMyCode": false
+    },
+    {
+      "name": "content_processor",
+      "type": "python",
+      "request": "attach",
+      "connect": {
+        "host": "localhost",
+        "port": 5680
+      },
+      "justMyCode": false
+    },
+    {
+      "name": "requirement_extractor",
+      "type": "python",
+      "request": "attach",
+      "connect": {
+        "host": "localhost",
+        "port": 5681
+      },
+      "justMyCode": false
+    },
+    {
+      "name": "summary_generator",
+      "type": "python",
+      "request": "attach",
+      "connect": {
+        "host": "localhost",
+        "port": 5682
+      },
+      "justMyCode": false
+    }
+  ],
+  "compounds": [
+    {
+      "name": "All BRD Functions",
+      "configurations": ["asset_indexer", "document_analyzer", "content_processor", "requirement_extractor", "summary_generator"]
     }
   ]
 }
