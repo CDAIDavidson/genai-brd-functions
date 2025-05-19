@@ -1,16 +1,16 @@
 {
-  "specversion": "1.0",
-  "id": "4babd277-7d61-4753-9ff3-a5f7d7908077",
-  "type": "google.cloud.pubsub.topic.v1.messagePublished",
+  "time": "2025-05-19T06:29:13.0336862Z",
   "source": "pubsub:projects/genai-brd-qi/topics/brd-ready-to-parse",
-  "time": "2025-05-19T04:06:41.1406361Z",
+  "datacontenttype": "application/json",
+  "type": "google.cloud.pubsub.topic.v1.messagePublished",
+  "specversion": "1.0",
   "data": {
     "message": {
-      "publishTime": "2025-05-19T04:06:41.1406836Z",
       "messageId": "test-message-id",
-      "data": "eyJkb2N1bWVudF9pZCI6InRlc3QtZG9jdW1lbnQtaWQtMDFkNjAwODQiLCJicmRfd29ya2Zsb3dfaWQiOiJ0ZXN0LXdvcmtmbG93LWlkLTRmNDFmNjc4In0="
+      "data": "eyJkb2N1bWVudF9pZCI6InRlc3QtZG9jdW1lbnQtaWQtMjY1YTY0OTIiLCJicmRfd29ya2Zsb3dfaWQiOiJ0ZXN0LXdvcmtmbG93LWlkLWQ5ZmIzZGE3In0=",
+      "publishTime": "2025-05-19T06:29:13.0371919Z"
     },
     "subscription": "projects/genai-brd-qi/subscriptions/content-processor-sub"
   },
-  "datacontenttype": "application/json"
+  "id": "26df66cc-1836-4e6d-b5f4-8d1378db9c67"
 }

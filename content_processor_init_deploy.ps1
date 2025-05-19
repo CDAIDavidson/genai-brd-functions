@@ -1,5 +1,5 @@
-# Deploys the content_processor function (Pub/Sub-triggered Cloud Function Gen 2)
-# Handles incoming messages from BRD_ANALYSIS_TOPIC
+# Deploys the content_processor function (HTTP-triggered Cloud Function Gen 2)
+# Can be called directly by asset_indexer or other functions
 
 $Project    = "genai-brd-qi"
 $Region     = "australia-southeast1"
@@ -8,14 +8,9 @@ $EnvFile    = "env.yaml"
 $SourcePath = "src/content_processor"
 $EntryPoint = "content_processor"
 
-# 1. Parse required parameters from env.yaml
+# 1. Ensure env.yaml exists
 if (-not (Test-Path $EnvFile)) {
   Write-Error "❌ Missing env.yaml"
-  exit 1
-}
-$TopicName = (Get-Content $EnvFile | Where-Object { $_ -match '^BRD_ANALYSIS_TOPIC:' }) -replace '^BRD_ANALYSIS_TOPIC:\s*', ''
-if (-not $TopicName) {
-  Write-Error "❌ Could not extract BRD_ANALYSIS_TOPIC from env.yaml"
   exit 1
 }
 
@@ -24,12 +19,11 @@ Write-Host "`n🔐 Granting IAM roles..." -ForegroundColor Yellow
 # 2. Add required IAM roles to the function's runtime service account
 $Roles = @(
   "roles/datastore.user",
-  "roles/pubsub.publisher",
-  "roles/pubsub.subscriber",
+  "roles/pubsub.publisher",  # Still needed for publishing to output topic
   "roles/storage.objectAdmin",
   "roles/iam.serviceAccountTokenCreator",
-  "roles/eventarc.eventReceiver",
-  "roles/logging.logWriter"
+  "roles/logging.logWriter",
+  "roles/cloudfunctions.invoker"  # Added for direct function calls
 )
 foreach ($Role in $Roles) {
   gcloud projects add-iam-policy-binding $Project `
@@ -37,20 +31,14 @@ foreach ($Role in $Roles) {
     --role=$Role --quiet
 }
 
-# 3. Grant Eventarc service agent permissions
-$ProjectNumber = gcloud projects describe $Project --format="value(projectNumber)"
-$EventarcSA    = "serviceAccount:service-$ProjectNumber@gcp-sa-eventarc.iam.gserviceaccount.com"
+# 3. Allow the service account to invoke itself (for direct function calls)
+gcloud functions add-invoker-policy-binding $EntryPoint `
+  --project $Project `
+  --region $Region `
+  --member="serviceAccount:$SA"
 
-gcloud projects add-iam-policy-binding $Project `
-  --member="$EventarcSA" `
-  --role="roles/pubsub.subscriber" --quiet
-
-gcloud projects add-iam-policy-binding $Project `
-  --member="$EventarcSA" `
-  --role="roles/pubsub.publisher" --quiet
-
-# 4. Deploy the function with Pub/Sub event trigger
-Write-Host "`n🚀 Deploying content_processor (triggered by $TopicName)..." -ForegroundColor Cyan
+# 4. Deploy the function with HTTP trigger
+Write-Host "`n🚀 Deploying content_processor (HTTP-triggered)..." -ForegroundColor Cyan
 
 gcloud functions deploy $EntryPoint `
   --gen2 `
@@ -58,10 +46,10 @@ gcloud functions deploy $EntryPoint `
   --region $Region `
   --runtime python311 `
   --source $SourcePath `
-  --entry-point $EntryPoint `
+  --entry-point "process_http_request" `  # Use the HTTP entry point
   --service-account $SA `
   --env-vars-file $EnvFile `
-  --trigger-topic $TopicName `
-  --trigger-location $Region
+  --trigger-http `  # Change to HTTP trigger
+  --allow-unauthenticated
 
-Write-Host "`n✅ Deployed content_processor with Pub/Sub trigger to $Region" -ForegroundColor Green 
+Write-Host "`n✅ Deployed content_processor with HTTP trigger to $Region" -ForegroundColor Green 

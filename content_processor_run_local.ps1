@@ -66,6 +66,6 @@ if ($Env:DEBUG) {
 Write-Host "🌐 Starting content_processor on http://localhost:$port …`n" `
            -ForegroundColor Green
 
-$cmd = "$launcher functions_framework --target content_processor --source src/content_processor/main.py --signature-type cloudevent --port $port"
+$cmd = "$launcher functions_framework --target process_http_request --source src/content_processor/main.py --signature-type http --port $port"
 
 Invoke-Expression $cmd 

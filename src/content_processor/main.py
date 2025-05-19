@@ -1,10 +1,9 @@
 """
 content_processor – Cloud Function to process BRD content.
 
-• Reads analyzed document data from BRD_ANALYSIS_TOPIC
+• Can be called directly by other Cloud Functions
 • Processes and extracts tables and key content
 • Logs execution metadata in Firestore
-• Publishes processed content to BRD_CONTENT_TOPIC
 """
 
 # Standard library imports
@@ -18,7 +17,7 @@ from time import sleep
 # Third-party imports
 from dotenv import load_dotenv
 import functions_framework
-from google.cloud import firestore, pubsub_v1, storage
+from google.cloud import firestore, storage
 
 # Local imports
 from .common.base import Document, FunctionStatus, DocumentType, PubSubMessage
@@ -32,22 +31,13 @@ load_dotenv()
 PROJECT_ID = os.getenv("GOOGLE_CLOUD_PROJECT")
 SOURCE_BUCKET = os.getenv("BRD_PROCESSED_BUCKET")
 COLLECTION_NAME = os.getenv("METADATA_COLLECTION")
-# Clear topic naming - separate subscription from publication
-SUB_TOPIC_NAME = os.getenv("TOPIC_BRD_READY_TO_PARSE")  # Topic we subscribe to
-PUB_TOPIC_NAME = os.getenv("TOPIC_TABLES_READY_TO_ASSESS")  # Topic we publish to
 FIRESTORE_DATABASE_ID = os.getenv("FIRESTORE_DATABASE_ID")
-
-# For local testing
-IS_LOCAL_TEST = os.getenv("LOCAL_TEST", "false").lower() == "true"
 
 # Set up emulator environment if needed
 setup_emulator_environment()
 
 # ── Client initialization ──────────────────────────────────────────────────
 storage_client = storage.Client()
-pubsub_client = pubsub_v1.PublisherClient()
-# Update to use the publication topic path
-pub_topic_path = pubsub_client.topic_path(PROJECT_ID, PUB_TOPIC_NAME)
 firestore_client = firestore.Client(project=PROJECT_ID)
 
 def download_document_content(document_id):
@@ -61,13 +51,22 @@ def download_document_content(document_id):
         The document content as text
     """
     try:
-        # Get bucket and file name
+        # Get bucket
         src_bucket_name = SOURCE_BUCKET
-        src_file_name = f"{document_id}.html"  # Assuming HTML format
-        
-        # Get the source bucket and blob
         src_bucket = storage_client.bucket(src_bucket_name)
-        src_blob = src_bucket.blob(src_file_name)
+        
+        # List blobs with document_id prefix to find the actual filename with extension
+        blobs = list(src_bucket.list_blobs(prefix=document_id))
+        
+        if not blobs:
+            # Try the old .html assumption as fallback
+            src_file_name = f"{document_id}.html"
+            src_blob = src_bucket.blob(src_file_name)
+        else:
+            # Use the first matching blob
+            src_blob = blobs[0]
+        
+        print(f"[DEBUG] Downloading document: {src_blob.name}")
         
         # Download the document content
         return src_blob.download_as_text()
@@ -94,91 +93,32 @@ def extract_tables_from_content(document_content):
     
     return simulated_tables
 
-def publish_processing_results(message):
-    """
-    Publish processing results to Pub/Sub.
-    
-    Args:
-        message: The PubSubMessage object to publish
-    """
-    try:
-        message_dict = message.to_dict()
-        print(f"[DEBUG] Publishing to topic {pub_topic_path}: {message_dict}")
-        
-        future = pubsub_client.publish(
-            pub_topic_path, 
-            data=json.dumps(message_dict).encode()
-        )
-        future.result()  # Wait for message to be published
-        
-        print(f"[DEBUG] Successfully published message to {PUB_TOPIC_NAME}")
-    except Exception as e:
-        print(f"[ERROR] Failed to publish to Pub/Sub: {e}")
-        raise
-
-# ── Main Cloud Function ─────────────────────────────────────────────────────
-@functions_framework.cloud_event
-def content_processor(cloud_event):
+# ── Main Function ─────────────────────────────────────────────────────
+def content_processor(brd_workflow_id=None, document_id=None):
     """
     Process BRD document content.
     
+    Can be triggered directly by other functions via HTTP.
+    
     Args:
-        cloud_event: The Cloud Event object from Pub/Sub
+        brd_workflow_id: BRD workflow ID
+        document_id: Document ID
         
     Returns:
-        "OK" if successful
+        Processing results dictionary if successful
     """
-    document_id = None
-    brd_workflow_id = None
-
-    
+    print(f"[Function Started] content_processor")
     
     try:
-        # Extract message data from Pub/Sub using our standard message class
-        if cloud_event is None or IS_LOCAL_TEST:  # local / unit-test
-            brd_workflow_id = "mock_brd_id"
-            document_id = "mock_document_id"
-            message = PubSubMessage(brd_workflow_id, document_id)
-            is_test = True
+        # Validate required parameters
+        if brd_workflow_id and document_id:
+            # Direct function call with provided IDs
+            print(f"[DEBUG] Direct function call with brd_workflow_id={brd_workflow_id}, document_id={document_id}")
         else:
-            try:
-                # Handle cloud_event potentially being a dict in local testing
-                event_type = None
-                event_data = None
-                if hasattr(cloud_event, 'type') and hasattr(cloud_event, 'data'):
-                    event_type = cloud_event.type
-                    event_data = cloud_event.data
-                elif isinstance(cloud_event, dict):
-                    # Standard CloudEvent attributes are in 'attributes'
-                    event_attributes = cloud_event.get('attributes', {})
-                    event_type = event_attributes.get('type')
-                    event_data = cloud_event.get('data')
-                
-                if event_type is None or event_data is None:
-                    # If critical information is missing, log and raise to ensure it's caught
-                    missing_parts = []
-                    if event_type is None: missing_parts.append("type")
-                    if event_data is None: missing_parts.append("data")
-                    error_message = f"CloudEvent structure is missing critical parts: {', '.join(missing_parts)}. Event: {cloud_event}"
-                    print(f"[ERROR] {error_message}")
-                    raise ValueError(error_message)
-
-                print(f"[DEBUG] Received cloud_event type: {event_type}")
-                # PubSubMessage.from_cloud_event expects the 'data' part of the CloudEvent,
-                # which itself contains the 'message' with the base64-encoded payload.
-                message = PubSubMessage.from_cloud_event(event_data)
-                brd_workflow_id = message.brd_workflow_id
-                document_id = message.document_id
-                
-                # Check if this is a test message by looking at the IDs
-                is_test = "test" in str(brd_workflow_id).lower() or "test" in str(document_id).lower()
-            except Exception as e:
-                print(f"[ERROR] Failed to parse cloud event: {e}")
-                # Use fallback values
-                brd_workflow_id = "error_workflow_id"
-                document_id = "error_document_id" 
-                message = PubSubMessage(brd_workflow_id, document_id)
-                is_test = True
+            # Missing required parameters
+            error_message = "Missing required parameters: brd_workflow_id and document_id must be provided"
+            print(f"[ERROR] {error_message}")
+            raise ValueError(error_message)
     
         print(f"[DEBUG] Starting content_processor for brd_workflow_id={brd_workflow_id}, document_id={document_id}")
         
@@ -197,35 +137,8 @@ def content_processor(cloud_event):
         )
         firestore_upsert(firestore_client, COLLECTION_NAME, inprogress_document)
         
-        # Document content - either from storage or mock content for tests
-        document_content = ""
-        
-        if is_test:
-            print(f"[DEBUG] Test mode detected - using mock document content")
-            document_content = """
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <title>Test BRD Document</title>
-            </head>
-            <body>
-                <h1>Business Requirements Document</h1>
-                <table>
-                    <tr><th>Requirement</th><th>Description</th></tr>
-                    <tr><td>REQ-001</td><td>Test requirement 1</td></tr>
-                    <tr><td>REQ-002</td><td>Test requirement 2</td></tr>
-                </table>
-                <table>
-                    <tr><th>Timeline</th><th>Date</th></tr>
-                    <tr><td>Start</td><td>2023-01-01</td></tr>
-                    <tr><td>End</td><td>2023-12-31</td></tr>
-                </table>
-            </body>
-            </html>
-            """
-        else:
-            # Download the document content from storage
-            document_content = download_document_content(document_id)
+        # Download document content from storage
+        document_content = download_document_content(document_id)
         
         # Extract tables from document content
         extracted_tables = extract_tables_from_content(document_content)
@@ -236,7 +149,7 @@ def content_processor(cloud_event):
             "brd_workflow_id": brd_workflow_id,
             "timestamp": datetime.utcnow().isoformat() + "Z",
             "tables": extracted_tables,
-            "title": message.data.get("title", "Unknown Document") if message.data else "Unknown Document",
+            "title": f"BRD Document {document_id}",
             "tables_count": len(extracted_tables)
         }
         
@@ -252,29 +165,63 @@ def content_processor(cloud_event):
         )
         firestore_upsert(firestore_client, COLLECTION_NAME, completed_document)
 
-        # Create a PubSubMessage with the processing results and publish
-        result_message = PubSubMessage(
-            brd_workflow_id=brd_workflow_id,
-            document_id=document_id,
-            data=processing_results,
-            processing_complete=True
-        )
-        publish_processing_results(result_message)
-
         print(f"[{document_id}] Successfully processed document content with {len(extracted_tables)} tables")
-        return "OK"
+        return processing_results
 
     except Exception as exc:
         # Log failure status in Firestore
-        failed_document = Document.create_function_execution(
-            id=document_id or "unknown_document_id",
-            brd_workflow_id=brd_workflow_id or "unknown_workflow_id",
-            status=FunctionStatus.FAILED,
-            description=f"Failed to process BRD content: {str(exc)}",
-            description_heading="Content Processor Function",
-            environment=get_environment_name(),
-            error=str(exc)
-        )
-        firestore_upsert(firestore_client, COLLECTION_NAME, failed_document)
+        if document_id and brd_workflow_id:
+            failed_document = Document.create_function_execution(
+                id=document_id,
+                brd_workflow_id=brd_workflow_id,
+                status=FunctionStatus.FAILED,
+                description=f"Failed to process BRD content: {str(exc)}",
+                description_heading="Content Processor Function",
+                environment=get_environment_name(),
+                error=str(exc)
+            )
+            firestore_upsert(firestore_client, COLLECTION_NAME, failed_document)
+        
         print(f"[{document_id or 'unknown'}] ERROR: {exc}", file=sys.stderr)
-        raise 
+        raise
+
+# For direct HTTP requests
+@functions_framework.http
+def process_http_request(request):
+    """HTTP request handler that delegates to the main content_processor function.
+    
+    Expects JSON payload with brd_workflow_id and document_id.
+    """
+    try:
+        request_json = request.get_json(silent=True)
+        if not request_json:
+            return {"error": "Missing JSON payload"}, 400
+        
+        # Extract parameters from request
+        brd_workflow_id = request_json.get("brd_workflow_id")
+        document_id = request_json.get("document_id")
+        
+        if not brd_workflow_id or not document_id:
+            return {"error": "Missing required parameters: brd_workflow_id and document_id"}, 400
+        
+        # Call the main function
+        result = content_processor(
+            brd_workflow_id=brd_workflow_id,
+            document_id=document_id
+        )
+        
+        return {"status": "success", "result": result}, 200
+    
+    except Exception as e:
+        print(f"[ERROR] HTTP request processing failed: {e}")
+        return {"error": str(e)}, 500
+
+# For Pub/Sub backward compatibility (deprecated)
+@functions_framework.cloud_event
+def process_pub_sub_event(cloud_event):
+    """Pub/Sub event handler - no longer supported, use HTTP endpoint instead."""
+    try:
+        return {"error": "Pub/Sub triggers are no longer supported. Use the HTTP endpoint."}, 400
+    except Exception as e:
+        print(f"[ERROR] Failed to process Pub/Sub event: {e}")
+        return {"error": str(e)}, 400 

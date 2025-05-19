@@ -25,7 +25,7 @@ class PubSubMessage:
     def __init__(
         self,
         brd_workflow_id: str,
-        document_id: str,
+        document_id: Optional[str] = None,
         data: Optional[Dict[str, Any]] = None,
         processing_complete: bool = False
     ):
@@ -33,20 +33,19 @@ class PubSubMessage:
         self.document_id = document_id
         self.data = data or {}
         self.processing_complete = processing_complete
-        self.timestamp = datetime.utcnow().isoformat() + "Z"
-    
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert message to dictionary for Pub/Sub publishing"""
         message = {
             "brd_workflow_id": self.brd_workflow_id,
-            "document_id": self.document_id,
-            "timestamp": self.timestamp,
-            "processing_complete": self.processing_complete
+            "data": self.data
         }
         
-        # Include data if provided
-        if self.data:
-            message["data"] = self.data
+        if self.document_id:
+            message["document_id"] = self.document_id
+            
+        if self.processing_complete:
+            message["processing_complete"] = True
             
         return message
     
@@ -62,28 +61,19 @@ class PubSubMessage:
     
     @classmethod
     def from_cloud_event(cls, cloud_event: Dict[str, Any]) -> 'PubSubMessage':
-        """Create a PubSubMessage from a Cloud Function event"""
-        import base64
-        import json
-        
-        if cloud_event and "message" in cloud_event and "data" in cloud_event["message"]:
-            message_data = cloud_event["message"]["data"]
-            
-            # Check if it's a string that needs decoding
-            if isinstance(message_data, str):
-                try:
-                    decoded_data = base64.b64decode(message_data).decode('utf-8')
-                    message_dict = json.loads(decoded_data)
-                except Exception:
-                    # Try parsing directly if base64 decode fails
-                    message_dict = json.loads(message_data)
-            else:
-                message_dict = message_data
-                
-            return cls.from_dict(message_dict)
-        
-        # Return a default message if parsing fails
-        return cls("unknown_workflow_id", "unknown_document_id")
+        """Create a PubSubMessage from a Cloud Event"""
+        try:
+            message_data = cloud_event.get("message", {})
+            if "data" in message_data and message_data["data"]:
+                # Base64 decode and JSON parse
+                import base64
+                import json
+                decoded_data = base64.b64decode(message_data["data"]).decode("utf-8")
+                return cls.from_dict(json.loads(decoded_data))
+            return cls("unknown", None, {})
+        except Exception as e:
+            print(f"[ERROR] Failed to parse Cloud Event: {e}")
+            return cls("error", None, {"error": str(e)})
 
 class FunctionData(TypedDict):
     timestamp_created: str
@@ -111,6 +101,8 @@ class BrdRequirementData(TypedDict):
     description: str
 
 class Document:
+    """Document class for Firestore storage"""
+    
     def __init__(
         self, 
         id: str, 
@@ -146,19 +138,24 @@ class Document:
         status: FunctionStatus,
         description: str = "",
         description_heading: str = "",
+        environment: str = "unknown",
         **extras: Any
     ) -> 'Document':
         """Create a function execution document"""
         timestamp = datetime.utcnow().isoformat() + "Z"
         
-        function_data = FunctionData(
-            timestamp_created=timestamp,
-            timestamp_updated=timestamp,
-            description_heading=description_heading,
-            description=description,
-            status=status.value,
-            **extras
-        )
+        # Create base function data
+        function_data = {
+            "timestamp_created": timestamp,
+            "timestamp_updated": timestamp,
+            "description_heading": description_heading,
+            "description": description,
+            "status": status.value,
+            "environment": environment
+        }
+        
+        # Add any extra fields
+        function_data.update(extras)
         
         return cls(
             id=id,
@@ -167,44 +164,4 @@ class Document:
             description=description,
             description_heading=description_heading,
             item={"function_data": function_data}
-        )
-
-class BaseFunction(ABC):
-    """Base class for all Cloud Functions"""
-    
-    def __init__(self):
-        self.logger = logging.getLogger(self.__class__.__name__)
-    
-    @abstractmethod
-    async def run(self, data: Dict[str, Any], context: Optional[Dict[str, Any]] = None) -> Any:
-        """
-        Main function logic to be implemented by subclasses.
-        
-        Args:
-            data: The event payload
-            context: The event context
-            
-        Returns:
-            Function result
-        """
-        pass
-    
-    async def execute(self, data: Dict[str, Any], context: Optional[Dict[str, Any]] = None) -> Any:
-        """
-        Execute the function with logging and error handling.
-        
-        Args:
-            data: The event payload
-            context: The event context
-            
-        Returns:
-            Function result
-        """
-        self.logger.info(f"Executing function with data: {data}")
-        try:
-            result = await self.run(data, context)
-            self.logger.info(f"Function executed successfully")
-            return result
-        except Exception as e:
-            self.logger.error(f"Function execution failed: {str(e)}")
-            raise 
+                ) 

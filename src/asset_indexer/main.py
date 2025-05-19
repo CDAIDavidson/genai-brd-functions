@@ -3,7 +3,7 @@ asset_indexer – single-purpose Cloud Function.
 
 • Copies a file from DROP_BRD_BUCKET ➜ BRD_PROCESSED_BUCKET
 • Logs execution metadata in Firestore
-• Publishes a JSON message to TOPIC_BRD_READY_TO_PARSE
+• Directly triggers content_processor function with brd_workflow_id
 """
 
 # Standard library imports
@@ -17,12 +17,24 @@ from time import sleep
 # Third-party imports
 from dotenv import load_dotenv
 import functions_framework
-from google.cloud import firestore, pubsub_v1, storage
+from google.cloud import firestore, storage
+import requests
+import google.auth.transport.requests
+import google.oauth2.id_token
 
 # Local imports
 from .common.base import Document, FunctionStatus, PubSubMessage
 from .common.firestore_utils import firestore_upsert
 from .common import running_in_gcp, is_storage_emulator, get_environment_name, setup_emulator_environment
+
+# For local testing only
+try:
+    # Try to import for direct local testing if possible
+    if not running_in_gcp():
+        from ..content_processor.main import content_processor as local_content_processor
+except ImportError:
+    local_content_processor = None
+    print("[DEBUG] Could not import content_processor for direct local calling")
 
 # Load dotenv for local development (ignored in prod)
 load_dotenv()
@@ -32,17 +44,52 @@ PROJECT_ID = os.getenv("GOOGLE_CLOUD_PROJECT")
 SOURCE_BUCKET = os.getenv("DROP_BRD_BUCKET")
 DEST_BUCKET = os.getenv("BRD_PROCESSED_BUCKET")
 COLLECTION_NAME = os.getenv("METADATA_COLLECTION")
-PUBSUB_TOPIC_NAME = os.getenv("TOPIC_BRD_READY_TO_PARSE")
 FIRESTORE_DATABASE_ID = os.getenv("FIRESTORE_DATABASE_ID")
+REGION = os.getenv("REGION", "australia-southeast1")  # Default region
 
 # Set up emulator environment if needed
 setup_emulator_environment()
 
 # ── Client initialization ──────────────────────────────────────────────────
 storage_client = storage.Client()
-pubsub_client = pubsub_v1.PublisherClient()
-topic_path = pubsub_client.topic_path(PROJECT_ID, PUBSUB_TOPIC_NAME)
 firestore_client = firestore.Client(project=PROJECT_ID)
+
+def call_content_processor(brd_workflow_id, document_id):
+    """Call content_processor function either directly (local) or via HTTP (prod)"""
+    if not running_in_gcp() and local_content_processor:
+        # Local direct call if we have the imported function
+        print(f"[DEBUG] Calling content_processor directly (local import)")
+        return local_content_processor(brd_workflow_id=brd_workflow_id, document_id=document_id)
+    elif not running_in_gcp():
+        # Local HTTP call if direct import failed
+        print(f"[DEBUG] Calling content_processor via HTTP (local)")
+        response = requests.post(
+            "http://localhost:8083",
+            json={"brd_workflow_id": brd_workflow_id, "document_id": document_id}
+        )
+        if response.status_code >= 400:
+            raise Exception(f"content_processor HTTP call failed: {response.text}")
+        return response.json().get("result")
+    else:
+        # Production HTTP call with auth
+        print(f"[DEBUG] Calling content_processor via HTTP (production)")
+        function_url = f"https://{REGION}-{PROJECT_ID}.cloudfunctions.net/content_processor"
+        
+        # Get auth token
+        auth_req = google.auth.transport.requests.Request()
+        id_token = google.oauth2.id_token.fetch_id_token(auth_req, function_url)
+        
+        # Call the function with auth token
+        response = requests.post(
+            function_url,
+            headers={"Authorization": f"Bearer {id_token}"},
+            json={"brd_workflow_id": brd_workflow_id, "document_id": document_id}
+        )
+        
+        if response.status_code >= 400:
+            raise Exception(f"content_processor HTTP call failed: {response.status_code} - {response.text}")
+        
+        return response.json().get("result")
 
 # ── Main Cloud Function ─────────────────────────────────────────────────────
 @functions_framework.cloud_event
@@ -107,19 +154,18 @@ def asset_indexer(cloud_event):
         )
         firestore_upsert(firestore_client, COLLECTION_NAME, completed_document)
 
-        # Notify downstream
-        pubsub_message = PubSubMessage(
-            brd_workflow_id=brd_id,
-            document_id=brd_id
-        )
-        msg_data = json.dumps(pubsub_message.to_dict()).encode()
+        # Call content_processor using the appropriate method
+        print(f"[DEBUG] Calling content_processor with brd_workflow_id={brd_id}")
+        additional_data = {
+            "title": os.path.splitext(os.path.basename(src_file_name))[0],
+            "source_file": src_file_name
+        }
         
-        print(f"[DEBUG] About to publish to Pub/Sub: topic_path={topic_path}, msg_dict={pubsub_message.to_dict()}")
         try:
-            pubsub_client.publish(topic_path, data=msg_data).result()
-            print(f"[DEBUG] Published to Pub/Sub: topic_path={topic_path}, msg_dict={pubsub_message.to_dict()}")
-        except Exception as pubsub_exc:
-            print(f"[ERROR] Failed to publish to Pub/Sub: {str(pubsub_exc)}", file=sys.stderr)
+            result = call_content_processor(brd_id, brd_id)
+            print(f"[DEBUG] Successfully called content_processor for brd_workflow_id={brd_id}. Result: {result}")
+        except Exception as func_exc:
+            print(f"[ERROR] Failed to call content_processor: {str(func_exc)}", file=sys.stderr)
             raise  # Re-raise to be caught by outer try/except
 
         print(f"[{brd_id}] copied {src_file_name} ➜ {dest_file_name}")
