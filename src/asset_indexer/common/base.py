@@ -3,6 +3,7 @@ import logging
 from typing import Any, Dict, Optional, Literal, TypedDict, Union, List
 from datetime import datetime
 from enum import Enum
+from time import sleep
 
 # Configure logger
 logging.basicConfig(level=logging.INFO)
@@ -18,62 +19,6 @@ class FunctionStatus(str, Enum):
     IN_PROGRESS = 'in progress'
     COMPLETED = 'completed'
     FAILED = 'failed'
-
-class PubSubMessage:
-    """Standard structure for Pub/Sub messages across the application"""
-    
-    def __init__(
-        self,
-        brd_workflow_id: str,
-        document_id: Optional[str] = None,
-        data: Optional[Dict[str, Any]] = None,
-        processing_complete: bool = False
-    ):
-        self.brd_workflow_id = brd_workflow_id
-        self.document_id = document_id
-        self.data = data or {}
-        self.processing_complete = processing_complete
-
-    def to_dict(self) -> Dict[str, Any]:
-        """Convert message to dictionary for Pub/Sub publishing"""
-        message = {
-            "brd_workflow_id": self.brd_workflow_id,
-            "data": self.data
-        }
-        
-        if self.document_id:
-            message["document_id"] = self.document_id
-            
-        if self.processing_complete:
-            message["processing_complete"] = True
-            
-        return message
-    
-    @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'PubSubMessage':
-        """Create a PubSubMessage from a dictionary"""
-        return cls(
-            brd_workflow_id=data.get("brd_workflow_id"),
-            document_id=data.get("document_id"),
-            data=data.get("data"),
-            processing_complete=data.get("processing_complete", False)
-        )
-    
-    @classmethod
-    def from_cloud_event(cls, cloud_event: Dict[str, Any]) -> 'PubSubMessage':
-        """Create a PubSubMessage from a Cloud Event"""
-        try:
-            message_data = cloud_event.get("message", {})
-            if "data" in message_data and message_data["data"]:
-                # Base64 decode and JSON parse
-                import base64
-                import json
-                decoded_data = base64.b64decode(message_data["data"]).decode("utf-8")
-                return cls.from_dict(json.loads(decoded_data))
-            return cls("unknown", None, {})
-        except Exception as e:
-            print(f"[ERROR] Failed to parse Cloud Event: {e}")
-            return cls("error", None, {"error": str(e)})
 
 class FunctionData(TypedDict):
     timestamp_created: str
@@ -107,6 +52,8 @@ class Document:
         self, 
         item_type: DocumentType,
         brd_workflow_id: str,
+        timestamp_created: str,
+        timestamp_updated: str,
         description: str,
         description_heading: str,
         item: Dict[str, Any],
@@ -115,6 +62,8 @@ class Document:
         self.id = id
         self.item_type = item_type
         self.brd_workflow_id = brd_workflow_id
+        self.timestamp_created = timestamp_created
+        self.timestamp_updated = timestamp_updated
         self.description = description
         self.description_heading = description_heading
         self.item = item
@@ -136,7 +85,7 @@ class Document:
         return doc_dict
     
     @classmethod
-    def create_function_execution(
+    def create_document(
         cls,
         brd_workflow_id: str,
         status: FunctionStatus,
@@ -147,7 +96,10 @@ class Document:
         **extras: Any
     ) -> 'Document':
         """Create a function execution document"""
+        sleep(5)
         timestamp = datetime.utcnow().isoformat() + "Z"
+
+        
         
         # Create base function data
         function_data = {
@@ -166,7 +118,64 @@ class Document:
             id=id,
             item_type=DocumentType.FUNCTION_EXECUTION_DATA,
             brd_workflow_id=brd_workflow_id,
+            timestamp_created=timestamp,
+            timestamp_updated=timestamp,
             description=description,
             description_heading=description_heading,
             item={"function_data": function_data}
-        ) 
+        )
+        
+    @classmethod
+    def update_document(
+        cls,
+        document: 'Document',
+        status: Optional[FunctionStatus] = None,
+        **extras: Any
+    ) -> 'Document':
+        """Update an existing function execution document
+        
+        Only updates status, timestamp_updated, and item fields
+        """
+        timestamp = datetime.utcnow().isoformat() + "Z"
+        
+        # Update timestamp at the parent level
+        document.timestamp_updated = timestamp
+        
+        # Get existing function data
+        function_data = document.item.get("function_data", {})
+        
+        # Update timestamp in function_data
+        function_data["timestamp_updated"] = timestamp
+        
+        # Update status if provided
+        if status is not None:
+            function_data["status"] = status.value
+            
+        # Add any extra fields
+        function_data.update(extras)
+        
+        # Update the document item
+        document.item["function_data"] = function_data
+        
+        return document
+        
+    @classmethod
+    def add_item_object(
+        cls,
+        document_id: str,
+        key_name: str = "function_data",
+        value: Dict[str, Any] = {}
+    ) -> Dict[str, Any]:
+        """Add an object to the item dictionary of a Document
+        
+        Args:
+            document_id: The ID of the document to update
+            key_name: The key name in the item dictionary (default: function_data)
+            value: The object value to add (default: {})
+            
+        Returns:
+            The updated item dictionary
+        """
+        item = {}
+        item[key_name] = value
+        return item 

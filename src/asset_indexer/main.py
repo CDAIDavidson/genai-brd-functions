@@ -23,8 +23,9 @@ import google.auth.transport.requests
 import google.oauth2.id_token
 
 # Local imports
-from .common.base import Document, FunctionStatus, PubSubMessage
-from .common.firestore_utils import firestore_upsert
+from .common.base import Document, FunctionStatus
+
+from .common.firestore_utils import firestore_upsert, firestore_update
 from .common import running_in_gcp, is_storage_emulator, get_environment_name, setup_emulator_environment
 
 # For local testing only
@@ -120,17 +121,16 @@ def asset_indexer(cloud_event):
     # Generate a document ID to use for both in-progress and completed states
     document_id = secrets.token_hex(8)
     
-    inprogress_document = Document.create_function_execution(
+    inprogress_document = Document.create_document(
         brd_workflow_id=brd_id,
         status=FunctionStatus.IN_PROGRESS,
-        description="Processing BRD document",
-        description_heading="Asset Indexer Function",
+        description="asset_indexer",
+        description_heading="asset_indexer description",
         environment=environment
     )
-    firestore_upsert(firestore_client, COLLECTION_NAME, inprogress_document, document_id=document_id)
+    firestore_update(firestore_client, COLLECTION_NAME, document_id=document_id, item=inprogress_document)
     print(f"[DEBUG] Created in-progress document with ID: {document_id}")
-    
-    sleep(10)
+
     
     try:
         src_blob = src_bucket.blob(src_file_name)
@@ -147,12 +147,9 @@ def asset_indexer(cloud_event):
         src_blob.delete()
 
         # Success log
-        completed_document = Document.create_function_execution(
-            brd_workflow_id=brd_id,
+        completed_document = Document.update_document(
+            inprogress_document, 
             status=FunctionStatus.COMPLETED,
-            description="Successfully processed BRD document",
-            description_heading="Asset Indexer Function",
-            environment=environment
         )
         # Use the same document ID as the in-progress document
         firestore_upsert(firestore_client, COLLECTION_NAME, completed_document, document_id=document_id)
@@ -176,15 +173,9 @@ def asset_indexer(cloud_event):
 
     except Exception as exc:
         # Failure log
-        failed_document = Document.create_function_execution(
-            brd_workflow_id=brd_id,
+        failed_document = Document.update_document(
+            inprogress_document,
             status=FunctionStatus.FAILED,
-            description=f"Failed to process BRD document: {str(exc)}",
-            description_heading="Asset Indexer Function",
-            source=src_file_name,
-            dest=dest_file_name,
-            environment=environment,
-            error=str(exc)
         )
         # Use the same document ID as the in-progress document
         firestore_upsert(firestore_client, COLLECTION_NAME, failed_document, document_id=document_id)

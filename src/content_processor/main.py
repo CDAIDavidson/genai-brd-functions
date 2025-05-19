@@ -135,7 +135,7 @@ def content_processor(document_id=None, brd_workflow_id=None):
         # Generate a document ID to use for both in-progress and completed states
         document_id = secrets.token_hex(8)
         
-        inprogress_document = Document.create_function_execution(
+        inprogress_document = Document.create_document(
             brd_workflow_id=brd_workflow_id,
             status=FunctionStatus.IN_PROGRESS,
             description="Processing BRD document content",
@@ -143,6 +143,7 @@ def content_processor(document_id=None, brd_workflow_id=None):
             environment=environment
         )
         firestore_upsert(firestore_client, COLLECTION_NAME, inprogress_document, document_id=document_id)
+        
         print(f"[DEBUG] Created in-progress document with ID: {document_id}")
         
         # Download document content from storage
@@ -160,9 +161,8 @@ def content_processor(document_id=None, brd_workflow_id=None):
             "title": f"BRD Document {document_id}",
             "tables_count": len(extracted_tables)
         }
-        
         # Log success status in Firestore
-        completed_document = Document.create_function_execution(
+        completed_document = Document.update_document(
             brd_workflow_id=brd_workflow_id,
             status=FunctionStatus.COMPLETED,
             description="Successfully processed BRD content",
@@ -180,7 +180,7 @@ def content_processor(document_id=None, brd_workflow_id=None):
     except Exception as exc:
         # Log failure status in Firestore
         if document_id:
-            failed_document = Document.create_function_execution(
+            failed_document = Document.create_document(
                 brd_workflow_id=brd_workflow_id,
                 status=FunctionStatus.FAILED,
                 description=f"Failed to process BRD content: {str(exc)}",

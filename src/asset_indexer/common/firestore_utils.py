@@ -7,12 +7,11 @@ from typing import Dict, Any, Optional
 from google.cloud import firestore
 from .base import Document
 
-def firestore_upsert(
+def firestore_update(
     firestore_client: firestore.Client, 
     collection_name: str, 
-    document: Document, 
-    auto_id: bool = False,
-    **extras: Any
+    document_id: str, 
+    item: Document
 ) -> str:
     """
     Insert or update a Firestore document.
@@ -20,24 +19,15 @@ def firestore_upsert(
     Args:
         firestore_client: Firestore client instance
         collection_name: Collection name to write to
-        document: Document instance to write
-        auto_id: Whether to auto-generate the document ID
-        extras: Additional debug data not stored in document
+        document_id: ID of the document to write
+        item: Document instance to write
     
     Returns:
-        The document ID (either existing or auto-generated)
+        The document ID
     """
     try:
-        doc_data = document.to_dict()
-        
-        # If auto_id is True, let Firestore generate the ID
-        if auto_id:
-            doc_ref = firestore_client.collection(collection_name).document()
-            # Update the document ID to match the auto-generated one
-            document.id = doc_ref.id
-            doc_data["id"] = doc_ref.id
-        else:
-            doc_ref = firestore_client.collection(collection_name).document(document.id)
+        doc_data = item.to_dict()
+        doc_ref = firestore_client.collection(collection_name).document(document_id)
         
         print(f"[DEBUG] Firestore write details:")
         print(f"[DEBUG] - Database: {firestore_client._database}")
@@ -45,7 +35,6 @@ def firestore_upsert(
         print(f"[DEBUG] - Collection: {collection_name}")
         print(f"[DEBUG] - Document path: {doc_ref.path}")
         print(f"[DEBUG] - Document ID: {doc_ref.id}")
-        print(f"[DEBUG] - Auto-generated ID: {auto_id}")
         print(f"[DEBUG] - Data: {doc_data}")
         
         doc_ref.set(doc_data, merge=True)

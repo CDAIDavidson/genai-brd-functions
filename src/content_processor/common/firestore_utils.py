@@ -28,6 +28,7 @@ def firestore_upsert(
         The document ID (either existing or auto-generated)
     """
     try:
+        
         doc_data = document.to_dict()
         
         # If auto_id is True, let Firestore generate the ID
@@ -62,6 +63,7 @@ def firestore_upsert(
             url = f"http://127.0.0.1:4000/firestore/data/{db_id}/{collection_name}/{doc_ref.id}"
         print(f"[DEBUG] View this document in the Emulator UI: {url}")
         
+        sleep(5)
         return doc_ref.id
     except Exception as e:
         print(f"[ERROR] Failed to write to Firestore: {str(e)}", file=sys.stderr)
