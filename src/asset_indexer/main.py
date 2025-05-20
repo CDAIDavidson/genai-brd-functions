@@ -123,10 +123,11 @@ def asset_indexer(cloud_event):
     function_item = FunctionData(
         timestamp_created=datetime.now().isoformat(),
         timestamp_updated=datetime.now().isoformat(),
-        description="asset_indexer",
-        description_heading="asset_indexer description",
+        description="File Indexing",
+        description_heading="This is the File Indexing description",
+        working_on="assigning GUID",
         status=FunctionStatus.IN_PROGRESS,
-        environment=environment
+        cloud_function_name="Asset Indexer"
     )
     function_document_data = DocumentClass(
         item_type=DocumentType.FUNCTION_EXECUTION_DATA,
@@ -135,13 +136,12 @@ def asset_indexer(cloud_event):
         timestamp_updated=datetime.now().isoformat(),
         description="asset_indexer",
         description_heading="asset_indexer description",
-        item=function_item
+        item=function_item.model_dump()  # Convert Pydantic model to dict
     )
 
     function_document_ref = firestore_client.collection(COLLECTION_NAME).document(document_id)
     function_document_ref.set(function_document_data.to_dict())
-    
-    
+ 
     try:
         src_blob = src_bucket.blob(src_file_name)
         # Use workaround only if running in the emulator
@@ -155,6 +155,9 @@ def asset_indexer(cloud_event):
         if not is_storage_emulator():
             dest_blob.patch()
         src_blob.delete()
+
+        sleep(30)
+    
 
         # Update document status to completed
         function_document_ref.update({

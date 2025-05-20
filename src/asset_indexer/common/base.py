@@ -4,42 +4,46 @@ from typing import Any, Dict, Optional, Literal, TypedDict, Union, List
 from datetime import datetime
 from enum import Enum
 from time import sleep
+from pydantic import BaseModel
 
 # Configure logger
 logging.basicConfig(level=logging.INFO)
 
 class DocumentType(str, Enum):
-    DOCUMENT_TABLE_DATA = 'document_table_data'
-    DOCUMENT_TABLES_DATA = 'document_tables_data'
-    DOCUMENT_REQUIREMENT_DATA = 'document_requirement_data'
-    DOCUMENT_SUMMARY_DATA = 'document_summary_data'
-    FUNCTION_EXECUTION_DATA = 'function_execution_data'
+    DOCUMENT_TABLE_DATA = "document_table_data"
+    DOCUMENT_TABLES_DATA = "document_tables_data"
+    DOCUMENT_REQUIREMENT_DATA = "document_requirement_data"
+    DOCUMENT_SUMMARY_DATA = "document_summary_data"
+    FUNCTION_EXECUTION_DATA = "function_execution_data"
 
 class FunctionStatus(str, Enum):
-    IN_PROGRESS = 'in progress'
-    COMPLETED = 'completed'
-    FAILED = 'failed'
+    IN_PROGRESS = "in progress"
+    COMPLETED = "completed"
+    FAILED = "failed"
 
-class FunctionData(TypedDict):
+class FunctionData(BaseModel):
     timestamp_created: str
     timestamp_updated: str
     description_heading: str
     description: str
-    status: str  # Should be one of FunctionStatus values
+    status: str
+    working_on: str
+    cloud_function_name: str
 
-class BrdSummaryData(TypedDict):
+
+class BrdSummaryData(BaseModel):
     timestamp_created: str
     timestamp_updated: str
     description_heading: str
     description: str
 
-class BrdTableData(TypedDict):
+class BrdTableData(BaseModel):
     timestamp_created: str
     timestamp_updated: str
     description_heading: str
     description: str
 
-class BrdRequirementData(TypedDict):
+class BrdRequirementData(BaseModel):
     timestamp_created: str
     timestamp_updated: str
     description_heading: str
@@ -93,5 +97,3 @@ class DocumentClass:
     def get(self, key, default=None):
         """Dictionary-like get method"""
         return self.to_dict().get(key, default)
-    
-   
