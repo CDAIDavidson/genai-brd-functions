@@ -94,28 +94,23 @@ def call_content_processor(document_id):
 # ── Main Cloud Function ─────────────────────────────────────────────────────
 @functions_framework.cloud_event
 def asset_indexer(cloud_event):
-    start_time = datetime.utcnow()
-
     # Extract bucket & filename
-    if cloud_event is None:  # local / unit-test
-        src_bucket_name = SOURCE_BUCKET
-        src_file_name = "mock_confluence_brd_redacted.html"
-    else:
-        payload = cloud_event.data
-        src_bucket_name = payload["bucket"]
-        src_file_name = payload["name"]
+
+    payload = cloud_event.data
+    src_bucket_name = payload["bucket"]
+    src_file_name = payload["name"]
 
     ext = os.path.splitext(src_file_name)[1]
     brd_id = secrets.token_hex(5)
     print(f"[DEBUG] brd_id={brd_id}")
     dest_file_name = f"{brd_id}{ext}"
 
-    src_bucket = storage_client.bucket(src_bucket_name)
+    src_bucket = storage_client.bucket(SOURCE_BUCKET)
     dest_bucket = storage_client.bucket(DEST_BUCKET)
 
-    # Update in progress status
-    environment = get_environment_name()
-    print(f"[DEBUG] Setting document environment to: {environment}")
+    # # Update in progress status
+    # environment = get_environment_name()
+    # print(f"[DEBUG] Setting document environment to: {environment}")
     
     # Generate a document ID to use for both in-progress and completed states
     document_id = secrets.token_hex(8)
@@ -151,6 +146,7 @@ def asset_indexer(cloud_event):
             dest_blob.upload_from_string(content)
         else:
             dest_blob = src_bucket.copy_blob(src_blob, dest_bucket, dest_file_name)
+            
         dest_blob.metadata = {"source_file_name": src_file_name}
         if not is_storage_emulator():
             dest_blob.patch()
@@ -166,21 +162,6 @@ def asset_indexer(cloud_event):
             "timestamp_updated": datetime.now().isoformat()
         })
         print(f"[DEBUG] Updated document with ID: {document_id} to completed status")
-
-        # Call content_processor using the appropriate method
-        # print(f"[DEBUG] Calling content_processor with brd_workflow_id={brd_id}")
-        # additional_data = {
-        #     "title": os.path.splitext(os.path.basename(src_file_name))[0],
-        #     "source_file": src_file_name
-        # }
-        
-        # try:
-        #     result = call_content_processor(brd_id)
-        #     print(f"[DEBUG] Successfully called content_processor for brd_workflow_id={brd_id}. Result: {result}")
-        # except Exception as func_exc:
-        #     print(f"[ERROR] Failed to call content_processor: {str(func_exc)}", file=sys.stderr)
-        #     raise  # Re-raise to be caught by outer try/except
-
         print(f"[{brd_id}] copied {src_file_name} ➜ {dest_file_name}")
 
     except Exception as exc:
