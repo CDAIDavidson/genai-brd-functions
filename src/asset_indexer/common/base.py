@@ -106,3 +106,4 @@ class DocumentClass:
     def get(self, key, default=None):
         """Dictionary-like get method"""
         return self.to_dict().get(key, default)
+

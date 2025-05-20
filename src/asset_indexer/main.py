@@ -118,9 +118,9 @@ def asset_indexer(cloud_event):
     function_item = FunctionData(
         timestamp_created=datetime.now().isoformat(),
         timestamp_updated=datetime.now().isoformat(),
-        description="This is the File Indexing description",
-        description_heading="File Indexing",
-        working_on="assigning GUID",
+        description="Assigns a unique identifier to incoming files and prepares them for further processing, ensuring each document can be tracked throughout its lifecycle.",
+        description_heading="File Indexing Function",
+        working_on="Assigning GUID",
         status=FunctionStatus.IN_PROGRESS,
         cloud_function_name="Asset Indexer"
     )
@@ -131,7 +131,7 @@ def asset_indexer(cloud_event):
         timestamp_updated=datetime.now().isoformat(),
         description="asset_indexer",
         description_heading="asset_indexer description",
-        item=function_item.model_dump()  # Convert Pydantic model to dict
+        item={"function_data":function_item.dict()}
     )
 
     function_document_ref = firestore_client.collection(COLLECTION_NAME).document(document_id)
@@ -152,13 +152,13 @@ def asset_indexer(cloud_event):
             dest_blob.patch()
         src_blob.delete()
 
-        sleep(30)
+        sleep(10)
     
 
         # Update document status to completed
         function_document_ref.update({
-            "item.status": FunctionStatus.COMPLETED,
-            "item.timestamp_updated": datetime.now().isoformat(),
+            "item.function_data.status": FunctionStatus.COMPLETED,
+            "item.function_data.timestamp_updated": datetime.now().isoformat(),
             "timestamp_updated": datetime.now().isoformat()
         })
         print(f"[DEBUG] Updated document with ID: {document_id} to completed status")
@@ -167,8 +167,8 @@ def asset_indexer(cloud_event):
     except Exception as exc:
         # Update document status to failed
         function_document_ref.update({
-            "item.status": FunctionStatus.FAILED,
-            "item.timestamp_updated": datetime.now().isoformat(),
+            "item.function_data.status": FunctionStatus.FAILED,
+            "item.function_data.timestamp_updated": datetime.now().isoformat(),
             "timestamp_updated": datetime.now().isoformat()
         })
         raise
