@@ -152,7 +152,7 @@ def asset_indexer(cloud_event):
             dest_blob.patch()
         src_blob.delete()
 
-        sleep(10)
+        sleep(15)
     
 
         # Update document status to completed
