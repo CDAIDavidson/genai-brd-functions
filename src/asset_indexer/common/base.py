@@ -49,6 +49,15 @@ class BrdRequirementData(BaseModel):
     description_heading: str
     description: str
 
+# Define the union type for item data
+ItemData = Union[
+    Dict[Literal["function_data"], FunctionData],
+    Dict[Literal["document_summary_data"], BrdSummaryData],
+    Dict[Literal["document_tables_data"], BrdTableData],
+    Dict[Literal["document_requirement_data"], BrdRequirementData],
+    Dict[str, Any]  # This is equivalent to Record<string, unknown>
+]
+
 class DocumentClass:
     """Document class for Firestore storage"""
     
@@ -60,7 +69,7 @@ class DocumentClass:
         timestamp_updated: str,
         description: str,
         description_heading: str,
-        item: Dict[str, Any],
+        item: ItemData,
         id: Optional[str] = None
     ):
         self.id = id

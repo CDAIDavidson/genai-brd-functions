@@ -118,8 +118,8 @@ def asset_indexer(cloud_event):
     function_item = FunctionData(
         timestamp_created=datetime.now().isoformat(),
         timestamp_updated=datetime.now().isoformat(),
-        description="File Indexing",
-        description_heading="This is the File Indexing description",
+        description="This is the File Indexing description",
+        description_heading="File Indexing",
         working_on="assigning GUID",
         status=FunctionStatus.IN_PROGRESS,
         cloud_function_name="Asset Indexer"
